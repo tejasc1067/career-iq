@@ -53,6 +53,9 @@ jobs:
         working-directory: backend
     env:
       DATABASE_URL: postgresql+psycopg://careeriq:careeriq@localhost:5432/careeriq
+      JWT_SECRET: ci-only-throwaway-signing-key-not-a-real-secret
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 15
 
     services:
       postgres:

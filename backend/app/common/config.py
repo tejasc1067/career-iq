@@ -7,7 +7,10 @@ All environment-specific values are read from the environment (or a local
 
 from functools import lru_cache
 
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+JWT_SECRET_MIN_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -29,7 +32,21 @@ class Settings(BaseSettings):
 
     cors_allow_origins: list[str] = ["http://localhost:3000"]
 
+    jwt_secret: SecretStr
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = Field(default=15, gt=0)
+
     log_level: str = "INFO"
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def _reject_weak_secret(cls, value: SecretStr) -> SecretStr:
+        """Refuse a signing key too short to be safe for HMAC-SHA256."""
+        if len(value.get_secret_value()) < JWT_SECRET_MIN_LENGTH:
+            raise ValueError(
+                f"JWT_SECRET must be at least {JWT_SECRET_MIN_LENGTH} characters"
+            )
+        return value
 
 
 @lru_cache

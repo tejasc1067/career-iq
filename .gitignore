@@ -19,6 +19,3 @@ __pycache__/
 
 .DS_Store
 *.swp
-
-# Design reference checkout — a separate repository, must not be committed here
-awesome-design-md/
