@@ -8,8 +8,8 @@ from sqlalchemy import delete, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.models import RefreshToken
-from app.auth.refresh import TOKEN_HASH_LENGTH, hash_refresh_token
+from app.auth.models import TOKEN_HASH_LENGTH, RefreshToken
+from app.auth.refresh import hash_refresh_token
 from app.users.models import User
 
 RAW_TOKEN = "0PJXbQ7kx1n-Zt4WsvGf9aYh2LmR8dEcTuNqAoBpKiU"

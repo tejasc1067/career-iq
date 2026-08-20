@@ -6,8 +6,9 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.auth.refresh import TOKEN_HASH_LENGTH
 from app.database.base import Base
+
+TOKEN_HASH_LENGTH = 64
 
 
 class RefreshToken(Base):
