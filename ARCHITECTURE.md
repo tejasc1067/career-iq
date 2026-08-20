@@ -172,7 +172,7 @@ The frontend must not contain business-critical AI logic.
 The exact framework structure can evolve during implementation, but the application should conceptually follow:
 
 ```text
-web/
+frontend/
 ├── app/
 │   ├── (auth)/
 │   ├── (dashboard)/
@@ -237,7 +237,7 @@ The backend should be organized by domain.
 Conceptually:
 
 ```text
-api/
+backend/
 └── app/
     ├── auth/
     ├── users/
@@ -1603,31 +1603,30 @@ career-iq/
 ├── .gitignore
 ├── docker-compose.yml
 │
-├── apps/
-│   ├── web/
-│   │   ├── app/
-│   │   ├── components/
-│   │   ├── hooks/
-│   │   ├── lib/
-│   │   ├── types/
-│   │   └── ...
-│   │
-│   └── api/
-│       ├── app/
-│       │   ├── auth/
-│       │   ├── users/
-│       │   ├── resumes/
-│       │   ├── career/
-│       │   ├── analysis/
-│       │   ├── transition/
-│       │   ├── improvement/
-│       │   ├── jobs/
-│       │   ├── matching/
-│       │   ├── roadmap/
-│       │   ├── ai/
-│       │   ├── database/
-│       │   └── common/
-│       └── tests/
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   ├── hooks/
+│   ├── lib/
+│   ├── types/
+│   └── ...
+│
+├── backend/
+│   ├── app/
+│   │   ├── auth/
+│   │   ├── users/
+│   │   ├── resumes/
+│   │   ├── career/
+│   │   ├── analysis/
+│   │   ├── transition/
+│   │   ├── improvement/
+│   │   ├── jobs/
+│   │   ├── matching/
+│   │   ├── roadmap/
+│   │   ├── ai/
+│   │   ├── database/
+│   │   └── common/
+│   └── tests/
 │
 ├── docs/
 │   ├── ai/
