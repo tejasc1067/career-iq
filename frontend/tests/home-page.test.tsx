@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import Home from "@/app/page";
+import { AuthProvider } from "@/lib/auth/context";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -23,7 +24,7 @@ describe("home page", () => {
       ),
     );
 
-    render(await Home());
+    render(<AuthProvider>{await Home()}</AuthProvider>);
 
     expect(screen.getByText("CareerIQ")).toBeInTheDocument();
     expect(screen.getByText("Running")).toBeInTheDocument();
@@ -33,7 +34,7 @@ describe("home page", () => {
   it("reports an unreachable API without failing to render", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
 
-    render(await Home());
+    render(<AuthProvider>{await Home()}</AuthProvider>);
 
     expect(screen.getByText("Unreachable")).toBeInTheDocument();
   });
