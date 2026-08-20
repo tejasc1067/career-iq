@@ -290,34 +290,88 @@ The exact endpoint naming and request/response contracts should be defined durin
 
 Authentication is part of V1.
 
-The backend will own authentication and authorization.
+The backend owns authentication and authorization.
 
 The frontend must never be trusted to determine the authenticated user's identity.
 
-Conceptual flow:
+CareerIQ will use a short-lived JWT access token combined with a long-lived opaque refresh token.
+
+Conceptual login flow:
 
 ```text
 Browser
-   │
-   │ Login
-   ▼
+  │
+  │ POST /api/auth/login
+  │ email + password
+  ▼
 FastAPI Auth
-   │
-   ├── Validate credentials
-   ├── Verify password hash
-   └── Create authenticated session
-   │
-   ▼
+  │
+  ├── Validate credentials
+  ├── Verify Argon2id password hash
+  ├── Create short-lived access JWT
+  └── Create refresh token
+        │
+        ├── Access JWT ───────────────► response body
+        │
+        └── HttpOnly refresh cookie ──► Set-Cookie
+  │
+  ▼
 Browser
-   │
-   │ Authenticated requests
-   ▼
-FastAPI
-   │
-   ├── Validate authentication
-   ├── Identify current user
-   └── Authorize resource
 ```
+
+The access token is returned in the response body and held in memory by the
+frontend. The refresh token is delivered only as an `HttpOnly` cookie and is
+never readable by frontend JavaScript.
+
+Conceptual authenticated request:
+
+```text
+Browser
+  │
+  │ GET /api/resumes
+  │ Authorization: Bearer <access_token>
+  ▼
+FastAPI
+  │
+  ├── Validate the access JWT signature and expiry
+  ├── Resolve the user from the `sub` claim
+  └── Authorize the requested resource
+  │
+  ▼
+Browser
+```
+
+Conceptual refresh flow:
+
+```text
+Browser
+  │
+  │ POST /api/auth/refresh
+  │ Cookie: refresh_token=<opaque value>
+  ▼
+FastAPI Auth
+  │
+  ├── Look up the token by hash
+  ├── Reject if expired, revoked, or already consumed
+  ├── Rotate: revoke the presented token, issue its replacement
+  └── Issue a new access JWT
+  │
+  ▼
+Browser
+```
+
+Authentication endpoints:
+
+```text
+POST /api/auth/signup     Create an account
+POST /api/auth/login      Exchange credentials for tokens
+POST /api/auth/refresh    Exchange a refresh cookie for a new access token
+POST /api/auth/logout     Revoke the refresh token and clear the cookie
+GET  /api/auth/me         Return the authenticated user
+```
+
+Only signup is implemented at present. The remaining endpoints belong to the
+authentication milestone described in section 64.
 
 ---
 
@@ -325,11 +379,14 @@ FastAPI
 
 Passwords must never be stored in plaintext.
 
-Passwords must be stored using a strong password hashing algorithm appropriate for modern applications.
+CareerIQ uses **Argon2id** for password hashing.
+
+The salt and cost parameters are encoded in the stored PHC-format hash string,
+so no additional salt column is required.
 
 Authentication implementation must:
 
-* Hash passwords securely
+* Hash passwords with Argon2id
 * Never log passwords
 * Never return password hashes to the frontend
 * Validate credentials server-side
@@ -340,18 +397,186 @@ Authentication implementation must:
 
 # 11. Token / Session Architecture
 
-The initial implementation may use JWT-based authentication.
+CareerIQ will use a hybrid token architecture:
 
-The architecture should distinguish:
+- Short-lived JWT access tokens
+- Long-lived opaque refresh tokens
 
-* Short-lived access credentials
-* Longer-lived refresh credentials where required
+The access token authorizes API requests. The refresh token exists only to
+obtain a new access token.
 
-Tokens must not contain unnecessary personal information.
+## 11.1 Access Token
 
-Secrets used for signing tokens must come from environment configuration.
+The access token will be a signed JWT.
 
-The exact token storage strategy must prioritize protection against common browser attacks.
+It should contain only the minimum claims required for authentication and authorization.
+
+Conceptual claims:
+
+```text
+sub       User ID
+iat       Issued-at timestamp
+exp       Expiration timestamp
+type      access
+jti       Token identifier
+```
+
+The token must not carry personal information such as email address, name, or
+employment history. `jti` exists for log correlation, not for revocation.
+
+Transport:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+* The access token is sent in the `Authorization` header on every protected request.
+* The frontend holds the access token in memory only.
+* The access token must never be written to `localStorage`, `sessionStorage`, or a cookie readable by JavaScript.
+* Access token lifetime is **15 minutes** initially.
+
+Access tokens are stateless and are not revocable once issued. The 15-minute
+lifetime is the control that bounds the exposure window; CareerIQ will not
+maintain a token blacklist. Revoking a refresh token therefore ends the session
+at the next refresh boundary, not instantly — an accepted consequence.
+
+## 11.2 Refresh Token
+
+The refresh token is opaque: a random value carrying no claims and no meaning
+outside the database.
+
+Requirements:
+
+* Generated from a cryptographically secure random source.
+* Stored server-side as a hash. The plaintext value is never persisted.
+* Expires **30 days** after it is issued.
+* Can be revoked before expiry.
+* Delivered to the browser only as an `HttpOnly` cookie.
+
+Cookie attributes:
+
+```text
+HttpOnly     Not readable by JavaScript
+Secure       Always set
+SameSite     Lax
+Path         /api/auth
+Max-Age      Matches the refresh token expiry
+```
+
+These attributes are fixed decisions, not options. `Secure` is always set;
+modern browsers treat `http://localhost` as a secure context, so local
+development needs no exception.
+
+Scoping the cookie to the authentication path keeps the refresh token off every
+other API request.
+
+CareerIQ assumes a **same-site deployment**: the frontend and the API are served
+from the same site, which is what makes `SameSite=Lax` sufficient. Cross-site
+cookie support is deliberately not introduced at this stage. If the topology
+later becomes cross-site, the cookie would require `SameSite=None` with
+`Secure`, and that change would also require explicit CSRF protection as
+described in section 11.5 — it is not a drop-in attribute swap.
+
+## 11.3 Rotation and Reuse Detection
+
+A refresh token may be consumed exactly once. Every refresh rotates it.
+
+```text
+Refresh request
+      ↓
+Look up the token by hash
+      ↓
+Valid and unconsumed?
+      │
+      ├── Yes → revoke it, issue a replacement in the same family
+      │
+      └── No  → expired, revoked, or replayed
+                      ↓
+                Reject the request
+                      ↓
+                Revoke the whole token family
+```
+
+Presenting a token that is already consumed, revoked, or expired is treated as
+a security event rather than an ordinary error: the request is rejected and the
+remaining tokens in that family are revoked, forcing re-authentication.
+
+Tokens produced by rotation share a family identifier, so a stolen token cannot
+be used to sustain a parallel session alongside the legitimate one.
+
+Each rotated refresh token receives a **new 30-day expiry measured from the
+moment it is issued**, not inherited from the token it replaced. The refresh
+window therefore slides forward while the user stays active, and a user who
+refreshes at least once every 30 days is never forced to log in again.
+
+CareerIQ does not impose an absolute session lifetime at this stage. Sessions
+end through refresh-token expiry after 30 days of inactivity, explicit logout,
+or revocation triggered by reuse detection.
+
+Rotation is strictly one-time-use. CareerIQ deliberately does **not** implement
+a grace window in which a just-consumed token is still briefly accepted: a
+grace window weakens reuse detection, since a replayed token becomes
+indistinguishable from a legitimate retry.
+
+The consequence is that two refresh requests in flight at once will trip reuse
+detection and revoke the family. **The frontend must therefore serialize refresh
+operations, keeping at most one refresh request in flight and queueing any
+requests that are waiting on a new access token.** This is a frontend
+responsibility; the backend does not coordinate concurrent refreshes, and no
+distributed coordination mechanism is introduced for it.
+
+## 11.4 Logout
+
+```text
+POST /api/auth/logout
+      ↓
+Revoke the presented refresh token
+      ↓
+Clear the refresh cookie
+```
+
+Logout revokes the active refresh token and clears the cookie. An outstanding
+access token stays valid until it expires — the accepted consequence of not
+maintaining a blacklist.
+
+## 11.5 CSRF Considerations
+
+The refresh endpoint is authenticated by a cookie, so a browser would attach
+that cookie to a cross-site request automatically. The refresh flow therefore
+requires CSRF protection.
+
+For the same-site deployment described in section 11.2, CareerIQ's CSRF control
+is:
+
+* `SameSite=Lax` on the refresh cookie, which stops the cookie riding along on
+  cross-site POST requests.
+* A strict CORS allowlist naming the known frontend origin.
+
+A separate double-submit CSRF token is **not** required while the deployment
+stays same-site. It becomes mandatory if the cookie ever moves to
+`SameSite=None`, because at that point the browser stops providing the
+protection.
+
+Endpoints authenticated by the `Authorization` header are not CSRF-exposed,
+because browsers do not attach that header on their own.
+
+## 11.6 Token Configuration
+
+Signing keys and lifetimes come from environment configuration, never from
+source code:
+
+```text
+JWT_SECRET                      Access token signing key
+JWT_ALGORITHM                   Signing algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES=15  Access token lifetime
+REFRESH_TOKEN_EXPIRE_DAYS=30    Refresh token lifetime
+```
+
+These are the initial documented values: 15 minutes for the access token
+(section 11.1) and 30 days for the refresh token (sections 11.2 and 11.3).
+
+A missing signing secret must prevent the application from starting. It must
+never fall back to a built-in default value.
 
 ---
 
@@ -359,7 +584,8 @@ The exact token storage strategy must prioritize protection against common brows
 
 Every protected resource must belong to an authenticated user.
 
-The backend should determine the current user from the authenticated session.
+The backend determines the current user from the `sub` claim of a validated
+access JWT.
 
 Avoid trusting client-provided user identifiers for authorization.
 
@@ -384,6 +610,13 @@ Return only that user's resumes
 ```
 
 Every database query involving user-owned data must enforce ownership.
+
+A `user_id` arriving in a path, query string, request body, or header is never
+used to decide whose data is returned. It may only ever be compared against the
+identity already established by the access token.
+
+Requests carrying no valid access token are rejected with an authentication
+error before any resource lookup takes place.
 
 ---
 
@@ -950,6 +1183,7 @@ The database should contain conceptually:
 
 ```text
 users
+refresh_tokens
 resumes
 resume_versions
 resume_sections
@@ -970,6 +1204,31 @@ embeddings
 ```
 
 The exact schema should be designed before implementation of each module.
+
+## 36.1 Refresh Token Persistence
+
+Refresh tokens are persisted so that they can expire, be revoked, and be
+rotated. Access tokens are stateless and are never stored.
+
+```text
+refresh_tokens
+├── id
+├── user_id          Owning user
+├── token_hash       Hash of the opaque token; never the plaintext value
+├── family_id        Groups the tokens produced by rotation
+├── expires_at       Absolute expiry
+├── revoked_at       Set when the token is consumed or revoked
+└── created_at
+```
+
+Only the hash is stored, so disclosure of the table does not yield usable
+refresh tokens. Lookup is by hash of the presented value.
+
+`family_id` supports the reuse detection described in section 11.3: replaying a
+consumed token revokes every token sharing its family.
+
+Expired and revoked rows should be pruned periodically. A scheduled cleanup
+script is sufficient; this does not justify a task queue.
 
 ---
 
@@ -1192,7 +1451,7 @@ Security must be considered across the entire system.
 
 Important requirements:
 
-* Secure password hashing
+* Argon2id password hashing
 * Authentication on protected endpoints
 * Authorization checks
 * User data isolation
@@ -1202,7 +1461,11 @@ Important requirements:
 * Environment-based secrets
 * No sensitive data in logs
 * Secure token handling
-* Rate limiting where appropriate
+* Short-lived (15-minute) access tokens, held in memory and never in long-lived browser storage
+* Refresh tokens stored only as hashes, with expiry and revocation
+* One-time-use refresh-token rotation with reuse detection and family revocation
+* CSRF protection on cookie-authenticated endpoints via `SameSite=Lax` and a strict CORS allowlist
+* Rate limiting where appropriate, including authentication endpoints
 * Protection against prompt injection where external content is processed
 
 ---
@@ -1585,6 +1848,24 @@ Architecture decisions should explain:
 * Reasoning
 * Consequences
 
+The authentication approach in sections 9, 11, and 12 is the first decision
+that warrants a record: short-lived JWT access tokens paired with opaque,
+rotating refresh tokens, chosen over server-side sessions and over long-lived
+JWTs. That record should state the decided parameters and the accepted
+consequences explicitly:
+
+* A 15-minute access token lifetime and a 30-day refresh token lifetime.
+* Rotation resets the refresh expiry, so the 30 days is a sliding window of
+  inactivity rather than a cap on total session length. No absolute session
+  lifetime is imposed yet.
+* Access tokens cannot be revoked before they expire; CareerIQ deliberately
+  keeps no token blacklist, so a revoked session ends at the next refresh
+  boundary.
+* One-time-use rotation with no grace window, which requires the frontend to
+  serialize refresh requests.
+* A same-site deployment assumption, which is what allows `SameSite=Lax`
+  without a separate CSRF token.
+
 ---
 
 # 63. Initial Repository Structure
@@ -1655,6 +1936,13 @@ Implementation should proceed incrementally.
 * Environment configuration
 * Basic CI
 * Authentication foundation
+  * User model and migration
+  * Argon2id password hashing
+  * Signup
+  * Login and access-token issuance
+  * Refresh-token persistence, rotation, and reuse detection
+  * Logout
+  * Protected-endpoint dependency
 
 ### Phase 2 — Career Profile
 
