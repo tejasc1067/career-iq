@@ -1,13 +1,14 @@
 """FastAPI application entrypoint.
 
-Domain routers are mounted here as each domain is implemented. Only the
-operational health router exists at this stage.
+Domain routers are mounted here as each domain is implemented.
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth.router import router as auth_router
 from app.common.config import get_settings
+from app.common.errors import register_error_handlers
 from app.common.health import router as health_router
 from app.common.logging import configure_logging
 
@@ -20,6 +21,8 @@ app = FastAPI(
     debug=settings.debug,
 )
 
+register_error_handlers(app)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allow_origins,
@@ -29,3 +32,4 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(auth_router)

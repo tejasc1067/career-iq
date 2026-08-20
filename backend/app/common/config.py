@@ -24,11 +24,9 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = False
 
-    # postgresql+psycopg://... — the driver must be async-capable.
     database_url: str = "postgresql+psycopg://careeriq:careeriq@localhost:5432/careeriq"
     database_echo: bool = False
 
-    # Browser origins allowed to call the API directly.
     cors_allow_origins: list[str] = ["http://localhost:3000"]
 
     log_level: str = "INFO"

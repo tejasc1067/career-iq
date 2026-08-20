@@ -4,12 +4,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/*
- * CareerIQ design tokens.
- * Values come from DESIGN.md — see its "shadcn/ui variable mapping" table.
- * Never hardcode a colour in a component; add or use a token here instead.
- */
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -47,7 +41,6 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
 
-  /* CareerIQ roles with no shadcn equivalent (DESIGN.md sections 2–4) */
   --color-surface-sunken: var(--cq-surface-sunken);
   --color-ink-subtle: var(--cq-ink-subtle);
   --color-hairline-subtle: var(--cq-hairline-subtle);
@@ -62,7 +55,6 @@
 }
 
 :root {
-  /* Surfaces — canvas is a cool near-white; panels sit on top in pure white */
   --background: #f4f6f6;
   --foreground: #101616;
   --card: #ffffff;
@@ -70,7 +62,6 @@
   --popover: #ffffff;
   --popover-foreground: #101616;
 
-  /* Brand — Meridian teal, 5.6:1 on white */
   --primary: #1d7370;
   --primary-foreground: #ffffff;
 
@@ -84,12 +75,10 @@
   --destructive: #a3282f;
   --destructive-foreground: #ffffff;
 
-  /* --input is hairline-strong, not hairline: form boundaries need 3:1 (WCAG 1.4.11) */
   --border: #e5e9e9;
   --input: #cdd4d4;
   --ring: #1d7370;
 
-  /* Categorical chart series — no green, no red, so a series is never read as pass/fail */
   --chart-1: #1d7370;
   --chart-2: #2e669e;
   --chart-3: #6153ad;
@@ -107,7 +96,6 @@
   --sidebar-border: #e5e9e9;
   --sidebar-ring: #1d7370;
 
-  /* CareerIQ extensions */
   --cq-surface-sunken: #f4f6f6;
   --cq-ink-subtle: #7d8888;
   --cq-hairline-subtle: #eaeeee;
@@ -121,7 +109,6 @@
   --popover: #1b2225;
   --popover-foreground: #eef2f2;
 
-  /* A light accent carries dark type */
   --primary: #4fbdb5;
   --primary-foreground: #08201f;
 
@@ -165,7 +152,6 @@
   }
   body {
     @apply bg-background text-foreground;
-    /* Inter alternates: single-storey a, disambiguated l — helps at 13–14px */
     font-feature-settings: "cv05" 1, "cv11" 1;
   }
   html {
@@ -174,7 +160,6 @@
 }
 
 @utility tabular {
-  /* Any figure the user may compare against another figure. DESIGN.md section 5. */
   font-feature-settings: "tnum" 1, "zero" 1;
 }
 

@@ -1,14 +1,11 @@
-# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
 venv/
 
-# Environment
 .env
 
-# Tooling caches
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/

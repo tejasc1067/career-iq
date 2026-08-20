@@ -1,9 +1,3 @@
-# Local development dependencies only.
-#
-# The frontend and backend run directly on the host for faster iteration
-# (ARCHITECTURE.md section 42); Docker provides PostgreSQL with pgvector.
-# Ollama also runs on the host when local model performance matters.
-
 services:
   postgres:
     image: pgvector/pgvector:pg17

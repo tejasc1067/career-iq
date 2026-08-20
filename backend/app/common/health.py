@@ -15,19 +15,15 @@ from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.config import Settings, get_settings
-from app.database.session import get_session
+from app.database.session import SessionDep
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
 
-# Annotated dependencies rather than call-in-default, so the signatures stay
-# lint-clean and match current FastAPI guidance.
 SettingsDep = Annotated[Settings, Depends(get_settings)]
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 class Health(BaseModel):
@@ -61,7 +57,6 @@ async def readiness(response: Response, session: SessionDep) -> Readiness:
     try:
         await session.execute(text("SELECT 1"))
     except SQLAlchemyError:
-        # Log the failure without echoing connection details to the caller.
         logger.warning("Readiness check failed: database unreachable")
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return Readiness(status="unavailable", database="unreachable")
