@@ -84,7 +84,99 @@ Users who have limited professional experience and need help understanding how t
 
 ---
 
-# 4. Core Product Concept
+# 4. User Accounts & Authentication
+
+CareerIQ requires user authentication before users can access personalized CareerIQ functionality.
+
+Authentication allows CareerIQ to securely associate resumes, career profiles, resume versions, job preferences, career transition analyses, and other personalized information with the correct user account.
+
+## 4.1 Authentication Requirements
+
+Users should be able to:
+
+* Create an account
+* Log in to their account
+* Log out
+* Maintain an authenticated session
+* Access their personalized CareerIQ data after authentication
+
+Authentication must use secure password handling and must never store plaintext passwords.
+
+## 4.2 User Data Isolation
+
+Every user's data must be isolated from other users.
+
+User-specific data includes:
+
+* Resumes
+* Resume versions
+* Career profiles
+* Resume analyses
+* Career transition analyses
+* Job preferences
+* Saved jobs
+* Career roadmaps
+* Other personalized CareerIQ data
+
+A user must never be able to access another user's data by manipulating an identifier, request parameter, or API request.
+
+All protected backend operations must determine the current user from the authenticated session rather than trusting a user ID supplied by the client.
+
+## 4.3 Authentication Flow
+
+### New User
+
+```text
+CareerIQ
+   ↓
+Sign Up
+   ↓
+Create Account
+   ↓
+Authenticated Session
+   ↓
+Upload Resume
+   ↓
+Career Profile
+   ↓
+CareerIQ Dashboard
+```
+
+### Returning User
+
+```text
+CareerIQ
+   ↓
+Login
+   ↓
+Authenticated Session
+   ↓
+CareerIQ Dashboard
+   ↓
+Existing Career Profile
+```
+
+## 4.4 Authentication and Product Experience
+
+Authentication should be integrated into the overall CareerIQ experience without becoming the primary focus of the product.
+
+Unauthenticated users may view the CareerIQ introduction and authentication screens.
+
+Personalized CareerIQ functionality requires authentication.
+
+The initial authenticated experience should guide a new user toward uploading their resume and creating their Career Profile.
+
+## 4.5 Authentication Scope
+
+Authentication is part of the initial CareerIQ product and must be included in the initial architecture.
+
+The initial implementation should focus on secure, straightforward account authentication.
+
+Advanced authentication features such as social login, multi-factor authentication, passwordless authentication, and enterprise SSO are outside the initial product scope and may be considered later.
+
+---
+
+# 5. Core Product Concept
 
 CareerIQ follows a profile-first model.
 
@@ -113,7 +205,7 @@ The Career Profile acts as the central source of structured information for the 
 
 ---
 
-# 5. Initial User Journey
+# 6. Initial User Journey
 
 ## Step 1 — Upload Resume
 
@@ -179,7 +271,7 @@ If processing fails, the user should receive a useful error message and an optio
 
 ---
 
-# 6. Current Career Profile
+# 7. Current Career Profile
 
 After the resume is analyzed, CareerIQ should present an inferred current profile.
 
@@ -225,7 +317,7 @@ Software Engineer
 
 ---
 
-# 7. CareerIQ Home / Dashboard
+# 8. CareerIQ Home / Dashboard
 
 Once the resume has been processed, the user's main dashboard should show the career profile at the top.
 
@@ -264,13 +356,13 @@ These four actions are the primary product entry points.
 
 ---
 
-# 8. Resume Intelligence
+# 9. Resume Intelligence
 
 The **Analyze My Resume** workflow provides a detailed assessment of the uploaded resume.
 
 The analysis should cover:
 
-### 8.1 Resume Overview
+### 9.1 Resume Overview
 
 * Detected role
 * Experience
@@ -279,7 +371,7 @@ The analysis should cover:
 * Main technologies
 * Primary domain
 
-### 8.2 Resume Strengths
+### 9.2 Resume Strengths
 
 Identify areas where the resume communicates the user's experience effectively.
 
@@ -291,7 +383,7 @@ Examples:
 * Strong measurable achievements
 * Relevant certifications
 
-### 8.3 Resume Weaknesses
+### 9.3 Resume Weaknesses
 
 Identify areas that could be improved.
 
@@ -304,7 +396,7 @@ Examples:
 * Repetition
 * Missing relevant keywords
 
-### 8.4 ATS Analysis
+### 9.4 ATS Analysis
 
 Evaluate factors such as:
 
@@ -326,7 +418,7 @@ or
 
 > **Potential ATS issues**
 
-### 8.5 Skill Analysis
+### 9.5 Skill Analysis
 
 Group skills into:
 
@@ -339,7 +431,7 @@ The system must distinguish between a skill being mentioned and a skill being de
 
 ---
 
-# 9. Target Role Analysis
+# 10. Target Role Analysis
 
 CareerIQ should allow the user to specify a target role.
 
@@ -374,7 +466,7 @@ Match Analysis
 
 ---
 
-# 10. Resume-to-Role Match
+# 11. Resume-to-Role Match
 
 CareerIQ should provide an understandable match assessment.
 
@@ -400,7 +492,7 @@ It represents **profile/resume alignment with the analyzed role requirements**.
 
 ---
 
-# 11. Career Transition
+# 12. Career Transition
 
 Career Transition is a core CareerIQ capability.
 
@@ -432,13 +524,13 @@ GenAI Engineer
 
 ---
 
-# 12. Career Transition Analysis
+# 13. Career Transition Analysis
 
 CareerIQ should compare the user's current profile with the target career.
 
 The analysis should identify:
 
-### 12.1 Transferable Skills
+### 13.1 Transferable Skills
 
 Skills and experience that can carry over to the new career.
 
@@ -454,11 +546,11 @@ Transferable
 ✓ REST APIs
 ```
 
-### 12.2 Existing Target Skills
+### 13.2 Existing Target Skills
 
 Skills the user already possesses that are directly relevant to the target role.
 
-### 12.3 Skill Gaps
+### 13.3 Skill Gaps
 
 Skills commonly required for the target role that are not sufficiently demonstrated by the user's profile.
 
@@ -473,11 +565,11 @@ Skills to develop
 • Microservices
 ```
 
-### 12.4 Experience Gaps
+### 13.4 Experience Gaps
 
 Identify where the user may lack practical experience rather than simply missing a keyword.
 
-### 12.5 Career Transition Readiness
+### 13.5 Career Transition Readiness
 
 Provide an overall transition assessment.
 
@@ -485,7 +577,7 @@ The score should be treated as an estimate of **readiness based on available pro
 
 ---
 
-# 13. Career Transition Rules
+# 14. Career Transition Rules
 
 CareerIQ must never recommend that users falsely claim skills or experience.
 
@@ -512,7 +604,7 @@ But it must not manufacture experience.
 
 ---
 
-# 14. Career Roadmap
+# 15. Career Roadmap
 
 After a career transition analysis, CareerIQ can generate a career roadmap.
 
@@ -560,7 +652,7 @@ Interview topics based on the target role.
 
 ---
 
-# 15. Resume Improvement
+# 16. Resume Improvement
 
 The **Improve My Resume** workflow provides user-controlled AI suggestions.
 
@@ -592,7 +684,7 @@ An optional free-form prompt can be provided as an advanced feature.
 
 ---
 
-# 16. AI Resume Suggestions
+# 17. AI Resume Suggestions
 
 CareerIQ should never silently modify a resume.
 
@@ -623,7 +715,7 @@ Each suggestion should clearly communicate:
 
 ---
 
-# 17. Resume Change Integrity
+# 18. Resume Change Integrity
 
 AI-generated content must be distinguishable from user-provided content while it is still a suggestion.
 
@@ -635,7 +727,7 @@ The original resume must remain recoverable.
 
 ---
 
-# 18. Resume Versioning
+# 19. Resume Versioning
 
 CareerIQ should maintain resume versions.
 
@@ -663,7 +755,7 @@ The original uploaded resume should never be destroyed.
 
 ---
 
-# 19. Resume Comparison
+# 20. Resume Comparison
 
 CareerIQ should provide a visual comparison between versions.
 
@@ -687,7 +779,7 @@ The comparison should support:
 
 ---
 
-# 20. Job Discovery
+# 21. Job Discovery
 
 The **Find Jobs** workflow should use the user's Career Profile rather than requiring them to manually enter all their information again.
 
@@ -705,7 +797,7 @@ The application should remember these preferences when appropriate.
 
 ---
 
-# 21. Job Sources
+# 22. Job Sources
 
 Job data should only come from sources and access methods that permit the application to retrieve and use the data.
 
@@ -717,7 +809,7 @@ Job data should be normalized into a common structure.
 
 ---
 
-# 22. Job Matching
+# 23. Job Matching
 
 CareerIQ should rank jobs based on alignment with the user's Career Profile.
 
@@ -736,7 +828,7 @@ The exact weighting is an implementation decision and should be configurable.
 
 ---
 
-# 23. Job Match Presentation
+# 24. Job Match Presentation
 
 Each job should provide a clear match explanation.
 
@@ -772,7 +864,7 @@ It is a **profile-to-job alignment score**, not a hiring probability.
 
 ---
 
-# 24. Job Recommendation Categories
+# 25. Job Recommendation Categories
 
 CareerIQ can categorize opportunities as:
 
@@ -796,7 +888,7 @@ These categories should be based on the matching system rather than arbitrary AI
 
 ---
 
-# 25. Job Details
+# 26. Job Details
 
 A job detail view should provide:
 
@@ -817,7 +909,7 @@ A job detail view should provide:
 
 ---
 
-# 26. Career Profile as Shared Context
+# 27. Career Profile as Shared Context
 
 The Career Profile should be reusable across the product.
 
@@ -841,7 +933,7 @@ The user should not have to repeatedly upload the same resume for each workflow.
 
 ---
 
-# 27. User Corrections
+# 28. User Corrections
 
 AI inference can be wrong.
 
@@ -871,7 +963,7 @@ User corrections should be treated as authoritative for subsequent analysis unle
 
 ---
 
-# 28. AI Transparency
+# 29. AI Transparency
 
 CareerIQ should clearly distinguish between:
 
@@ -895,7 +987,7 @@ This distinction should be reflected in the UI where it matters.
 
 ---
 
-# 29. AI Safety and Accuracy Principles
+# 30. AI Safety and Accuracy Principles
 
 CareerIQ should prioritize truthful career representation.
 
@@ -924,7 +1016,7 @@ when the information is inferred.
 
 ---
 
-# 30. AI Interaction Model
+# 31. AI Interaction Model
 
 CareerIQ should primarily be **UI-driven**, not chatbot-driven.
 
@@ -950,7 +1042,7 @@ A free-form AI input may be provided as an optional advanced interaction, but th
 
 ---
 
-# 31. Loading and Processing States
+# 32. Loading and Processing States
 
 AI and document processing can take time.
 
@@ -969,7 +1061,7 @@ Avoid unexplained infinite loading indicators.
 
 ---
 
-# 32. Error Handling
+# 33. Error Handling
 
 Errors should be understandable to normal users.
 
@@ -991,7 +1083,7 @@ Provide a clear recovery action.
 
 ---
 
-# 33. Privacy
+# 34. Privacy
 
 Career information is sensitive.
 
@@ -1005,7 +1097,7 @@ Secrets and credentials must never be stored in source code.
 
 ---
 
-# 34. Free / Local-First Requirement
+# 35. Free / Local-First Requirement
 
 The initial version should be runnable without paid AI APIs.
 
@@ -1027,7 +1119,7 @@ Potential future providers may include commercial APIs, but they must not be req
 
 ---
 
-# 35. Initial Scope
+# 36. Initial Scope
 
 The first complete product should focus on:
 
@@ -1048,7 +1140,7 @@ The first complete product should focus on:
 
 ---
 
-# 36. Post-MVP Features
+# 37. Post-MVP Features
 
 The following features should not be implemented until the core product is stable:
 
@@ -1088,7 +1180,7 @@ These are future capabilities and should not expand the initial implementation s
 
 ---
 
-# 37. Non-Goals
+# 38. Non-Goals
 
 CareerIQ is not intended to:
 
@@ -1103,7 +1195,7 @@ CareerIQ is not intended to:
 
 ---
 
-# 38. Success Criteria
+# 39. Success Criteria
 
 The initial product should allow a new user to complete this journey:
 
@@ -1141,7 +1233,7 @@ The user should leave the application with a clearer understanding of:
 
 ---
 
-# 39. Product Principles
+# 40. Product Principles
 
 CareerIQ should consistently follow these principles:
 
@@ -1179,7 +1271,7 @@ The application should be simple for a first-time user while providing deeper fu
 
 ---
 
-# 40. Initial Product Navigation
+# 41. Initial Product Navigation
 
 The exact visual design is defined separately in `DESIGN.md`.
 
@@ -1201,7 +1293,7 @@ Additional navigation items can be introduced as features mature.
 
 ---
 
-# 41. Product Source of Truth
+# 42. Product Source of Truth
 
 This document defines **what CareerIQ should do**.
 
