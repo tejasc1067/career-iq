@@ -4,12 +4,14 @@ from collections.abc import AsyncIterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.common.config import get_settings
 from app.database.session import get_session
 from app.main import app
+from app.users.models import User
 
 
 @pytest.fixture
@@ -27,10 +29,14 @@ async def db_session() -> AsyncIterator[AsyncSession]:
     Requires `alembic upgrade head` to have run. Testing against the migrated
     schema rather than metadata.create_all also proves the migration matches
     the model.
+
+    Rows left by local development are removed inside the test transaction so
+    every test starts from an empty table; the rollback restores them.
     """
     engine = create_async_engine(get_settings().database_url, poolclass=NullPool)
     async with engine.connect() as connection:
         transaction = await connection.begin()
+        await connection.execute(delete(User))
         session = AsyncSession(
             bind=connection,
             expire_on_commit=False,
