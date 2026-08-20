@@ -1,0 +1,29 @@
+# Environment
+.env
+.env.local
+
+# Node
+node_modules/
+.next/
+out/
+next-env.d.ts
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.eslintcache
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Design reference checkout — a separate repository, must not be committed here
+awesome-design-md/
