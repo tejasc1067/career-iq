@@ -1,11 +1,19 @@
 """Authentication endpoints."""
 
-from fastapi import APIRouter, HTTPException, Response, status
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.auth.models import RefreshToken
 from app.auth.password import hash_password, verify_password
-from app.auth.refresh import issue_refresh_token
+from app.auth.refresh import (
+    RefreshTokenError,
+    hash_refresh_token,
+    issue_refresh_token,
+    rotate_refresh_token,
+)
 from app.auth.schemas import AccessTokenResponse, LoginRequest
 from app.auth.tokens import create_access_token
 from app.common.config import Settings, get_settings
@@ -17,6 +25,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 DUPLICATE_EMAIL_DETAIL = "An account with this email address already exists."
 INVALID_CREDENTIALS_DETAIL = "Incorrect email address or password."
+INVALID_SESSION_DETAIL = "Your session is no longer valid. Please sign in again."
 REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_PATH = "/api/auth"
 SECONDS_PER_DAY = 86400
@@ -93,6 +102,71 @@ def _set_refresh_cookie(response: Response, raw_token: str, settings: Settings) 
         key=REFRESH_COOKIE_NAME,
         value=raw_token,
         max_age=settings.refresh_token_expire_days * SECONDS_PER_DAY,
+        path=REFRESH_COOKIE_PATH,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
+
+
+@router.post(
+    "/refresh",
+    response_model=AccessTokenResponse,
+    summary="Exchange a refresh cookie for a new access token",
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "Invalid session"}},
+)
+async def refresh(
+    request: Request, response: Response, session: SessionDep
+) -> AccessTokenResponse:
+    """Rotate the refresh cookie and issue a new access token."""
+    raw_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if not raw_token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, INVALID_SESSION_DETAIL)
+
+    settings = get_settings()
+    try:
+        issued = await rotate_refresh_token(session, raw_token, settings=settings)
+    except RefreshTokenError:
+        await session.commit()
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, INVALID_SESSION_DETAIL
+        ) from None
+    await session.commit()
+
+    _set_refresh_cookie(response, issued.raw_token, settings)
+    return AccessTokenResponse(
+        access_token=create_access_token(issued.record.user_id, settings),
+        expires_in=settings.access_token_expire_minutes * 60,
+    )
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="End the current session",
+)
+async def logout(request: Request, response: Response, session: SessionDep) -> None:
+    """Revoke the presented refresh token, if any, and clear the cookie."""
+    raw_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if raw_token:
+        record = await session.scalar(
+            select(RefreshToken).where(
+                RefreshToken.token_hash == hash_refresh_token(raw_token),
+                RefreshToken.revoked_at.is_(None),
+            )
+        )
+        if record is not None:
+            record.revoked_at = datetime.now(UTC)
+            await session.commit()
+        else:
+            await session.rollback()
+
+    _clear_refresh_cookie(response)
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=REFRESH_COOKIE_NAME,
         path=REFRESH_COOKIE_PATH,
         httponly=True,
         secure=True,
