@@ -1,1 +1,1 @@
-"""auth domain. Not implemented yet."""
+"""auth domain: shared authentication primitives."""

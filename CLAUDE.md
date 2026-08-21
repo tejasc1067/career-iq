@@ -72,6 +72,34 @@ Before implementing major UI components:
 - Preserve backward compatibility when modifying APIs.
 - Keep commits focused and logically grouped.
 
+## Comment Policy
+
+Keep comments to a minimum.
+
+A comment is allowed only when removing it would cause:
+- the application to fail
+- the build or tooling to fail
+- configuration behavior to change
+- a required tool/compiler/interpreter directive to stop working
+
+Remove all other comments, including:
+- explanatory comments
+- obvious comments
+- implementation notes
+- historical comments
+- TODO comments
+- instructional comments
+- comments describing code behavior that is already clear from the code
+- comments in configuration files that only explain configuration values
+
+Do not replace removed comments with docstrings.
+
+Required tool directives such as `# noqa` and managed tool markers
+must be preserved when removing them would change tooling behavior.
+
+Before completing a development task, check newly created or modified
+files for unnecessary comments.
+
 ## Resume Integrity
 
 CareerIQ must never fabricate or invent:

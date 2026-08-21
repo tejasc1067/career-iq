@@ -1,1 +1,1 @@
-"""users domain. Not implemented yet."""
+"""users domain: account identity and persistence."""

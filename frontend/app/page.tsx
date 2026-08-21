@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { SessionStatus } from "@/components/auth/session-status";
 import { API_BASE_URL, fetchApiHealth } from "@/lib/api/client";
 
 export default async function Home() {
@@ -24,6 +25,10 @@ export default async function Home() {
           <div className="flex items-center justify-between gap-4">
             <span className="text-muted-foreground">Frontend</span>
             <Badge variant="secondary">Running</Badge>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-muted-foreground">Session</span>
+            <SessionStatus />
           </div>
           <div className="flex items-center justify-between gap-4">
             <span className="text-muted-foreground">API</span>
