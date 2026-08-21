@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
+import { AppHeader } from "@/components/navigation/app-header";
 import { AuthProvider } from "@/lib/auth/context";
 
 const inter = Inter({
@@ -28,7 +29,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${inter.variable} ${jetBrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <AppHeader />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );
