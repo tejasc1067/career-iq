@@ -46,15 +46,6 @@ def _plain_zip_bytes() -> bytes:
     return buffer.getvalue()
 
 
-@pytest.fixture(autouse=True)
-def storage_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point resume storage at a temporary directory for every test."""
-    monkeypatch.setenv("RESUME_STORAGE_DIR", str(tmp_path))
-    get_settings.cache_clear()
-    yield tmp_path
-    get_settings.cache_clear()
-
-
 async def _user(session: AsyncSession, email: str = "member@example.com") -> User:
     user = User(email=email, password_hash=hash_password(PASSWORD))
     session.add(user)
@@ -278,11 +269,14 @@ async def test_the_response_never_exposes_the_storage_path(
         "original_filename",
         "content_type",
         "byte_size",
+        "parse_status",
+        "parse_error",
         "created_at",
         "updated_at",
     }
     assert str(storage_root) not in response.text
     assert "stored_path" not in response.text
+    assert "extracted_text" not in response.text
     assert "%PDF" not in response.text
 
 
@@ -528,10 +522,13 @@ async def test_the_list_returns_metadata_only(
         "original_filename",
         "content_type",
         "byte_size",
+        "parse_status",
+        "parse_error",
         "created_at",
         "updated_at",
     }
     assert str(storage_root) not in response.text
+    assert "extracted_text" not in response.text
     assert "%PDF" not in response.text
 
 
