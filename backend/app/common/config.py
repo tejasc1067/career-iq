@@ -6,11 +6,14 @@ All environment-specific values are read from the environment (or a local
 """
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 JWT_SECRET_MIN_LENGTH = 32
+DEFAULT_RESUME_STORAGE_DIR = Path("var/resumes")
+DEFAULT_MAX_RESUME_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
 class Settings(BaseSettings):
@@ -36,6 +39,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = Field(default=15, gt=0)
     refresh_token_expire_days: int = Field(default=30, gt=0)
+
+    resume_storage_dir: Path = DEFAULT_RESUME_STORAGE_DIR
+    max_resume_upload_bytes: int = Field(default=DEFAULT_MAX_RESUME_UPLOAD_BYTES, gt=0)
 
     log_level: str = "INFO"
 

@@ -2,8 +2,9 @@
 
 AI-powered career intelligence platform. Local-first, privacy-first, free to run.
 
-Current state: project foundation plus **authentication** (signup, login, token
-refresh, logout). No career, resume, or job features yet.
+Current state: project foundation, **authentication** (signup, login, token
+refresh, logout), the **user profile**, and **resume upload** (upload, list,
+read, delete). No parsing, career profile, or job features yet.
 
 ## Specifications
 
@@ -55,6 +56,10 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
+Uploaded resumes are written to `RESUME_STORAGE_DIR` (default `backend/var/`
+`resumes`), which is git-ignored and never served over HTTP.
+`MAX_RESUME_UPLOAD_BYTES` caps an upload at 10 MB by default.
+
 `JWT_SECRET` is **required and has no default**. The application refuses to start
 without it, and rejects any value shorter than 32 characters. Generate one:
 
@@ -65,7 +70,7 @@ openssl rand -hex 32
 Then apply the migrations and start the server:
 
 ```bash
-alembic upgrade head        # pgvector extension, users, refresh_tokens
+alembic upgrade head        # pgvector, users, refresh_tokens, user_profiles, resumes
 uvicorn app.main:app --reload
 ```
 
@@ -85,6 +90,19 @@ POST /api/auth/refresh    Rotate the refresh cookie, get a new access token
 POST /api/auth/logout     Revoke the refresh token and clear the cookie
 ```
 
+User and resume endpoints (all require a bearer access token):
+
+```text
+GET    /api/users/me            The signed-in account and its profile
+PUT    /api/users/me/profile    Replace the profile
+POST   /api/resumes             Upload a PDF or DOCX resume (multipart, field `file`)
+GET    /api/resumes             List the caller's resumes, newest first
+GET    /api/resumes/{id}        Read one resume's metadata
+DELETE /api/resumes/{id}        Permanently delete a resume and its file
+```
+
+The API returns resume metadata only; it never serves the stored file.
+
 ### 3. Frontend
 
 ```bash
@@ -96,7 +114,8 @@ npm run dev
 
 Open <http://localhost:3000>. The home page reports whether the API is reachable
 and whether you have an active session. Sign in at
-<http://localhost:3000/login>.
+<http://localhost:3000/login>, then manage resumes at
+<http://localhost:3000/resumes>.
 
 ### Try the login flow
 
