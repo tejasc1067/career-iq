@@ -33,6 +33,16 @@ describe("app header", () => {
     );
   });
 
+  it("links to the resumes page", () => {
+    pathname.mockReturnValue("/");
+    renderHeader();
+
+    expect(screen.getByRole("link", { name: "My resumes" })).toHaveAttribute(
+      "href",
+      "/resumes",
+    );
+  });
+
   it("marks the current page for assistive technology", () => {
     pathname.mockReturnValue("/profile");
     renderHeader();
@@ -42,6 +52,19 @@ describe("app header", () => {
       "page",
     );
     expect(screen.getByRole("link", { name: "Home" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
+  it("marks the resumes page as current when it is active", () => {
+    pathname.mockReturnValue("/resumes");
+    renderHeader();
+
+    expect(screen.getByRole("link", { name: "My resumes" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("link", { name: "My Profile" })).not.toHaveAttribute(
       "aria-current",
     );
   });

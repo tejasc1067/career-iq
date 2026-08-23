@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/", label: "Home" },
   { href: "/profile", label: "My Profile" },
+  { href: "/resumes", label: "My resumes" },
 ];
 
 export function AppHeader() {
