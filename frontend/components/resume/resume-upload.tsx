@@ -112,8 +112,8 @@ export function ResumeUpload({
       <CardHeader>
         <CardTitle>Upload your resume to get started</CardTitle>
         <CardDescription>
-          PDF or DOCX, up to {MAX_MEGABYTES} MB. Your resume is stored by
-          CareerIQ on this machine.
+          PDF or DOCX, up to {MAX_MEGABYTES} MB. CareerIQ stores your resume and
+          reads its text on this machine.
         </CardDescription>
       </CardHeader>
 
@@ -184,7 +184,8 @@ export function ResumeUpload({
                 : "text-muted-foreground text-xs"
             }
           >
-            {message ?? "CareerIQ never changes your resume without your approval."}
+            {message ??
+              "CareerIQ never changes your resume without your approval."}
           </p>
         </CardContent>
 
@@ -192,7 +193,10 @@ export function ResumeUpload({
           <p className="text-muted-foreground text-xs" aria-live="polite">
             {uploading ? "Uploading…" : (status ?? "")}
           </p>
-          <Button type="submit" disabled={uploading || !file || Boolean(invalid)}>
+          <Button
+            type="submit"
+            disabled={uploading || !file || Boolean(invalid)}
+          >
             {uploading ? "Uploading…" : "Upload resume"}
           </Button>
         </CardFooter>
