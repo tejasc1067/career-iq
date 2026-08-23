@@ -1,1 +1,1 @@
-"""resumes domain. Not implemented yet."""
+"""resumes domain: uploaded resume files and their metadata."""
