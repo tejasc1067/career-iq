@@ -9,7 +9,7 @@ from alembic import context
 from app.auth.models import RefreshToken
 from app.common.config import get_settings
 from app.database.base import Base
-from app.users.models import User
+from app.users.models import User, UserProfile
 
 config = context.config
 
@@ -18,7 +18,7 @@ if config.config_file_name is not None:
 
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
-REGISTERED_MODELS = (RefreshToken, User)
+REGISTERED_MODELS = (RefreshToken, User, UserProfile)
 
 target_metadata = Base.metadata
 
