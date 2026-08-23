@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ResumeManager } from "@/components/resume/resume-manager";
@@ -19,14 +25,32 @@ const EXISTING = {
   original_filename: "backend-engineer.pdf",
   content_type: PDF_TYPE,
   byte_size: 245_760,
+  parse_status: "parsed",
+  parse_error: null,
   created_at: "2026-08-20T10:00:00Z",
   updated_at: "2026-08-20T10:00:00Z",
+};
+const UNPARSED = {
+  ...EXISTING,
+  id: "44444444-4444-4444-4444-444444444444",
+  original_filename: "older-upload.pdf",
+  parse_status: "pending",
+};
+const UNREADABLE = {
+  ...EXISTING,
+  id: "55555555-5555-5555-5555-555555555555",
+  original_filename: "scanned.pdf",
+  parse_status: "failed",
+  parse_error:
+    "We couldn't find any text in this PDF. If it is a scan or an image, upload a text-based PDF or a DOCX version instead.",
 };
 const OTHER = {
   id: "22222222-2222-2222-2222-222222222222",
   original_filename: "data-analyst.docx",
   content_type: DOCX_TYPE,
   byte_size: 51_200,
+  parse_status: "parsed",
+  parse_error: null,
   created_at: "2026-08-19T10:00:00Z",
   updated_at: "2026-08-19T10:00:00Z",
 };
@@ -35,6 +59,8 @@ const UPLOADED = {
   original_filename: "resume.pdf",
   content_type: PDF_TYPE,
   byte_size: 1024,
+  parse_status: "parsed",
+  parse_error: null,
   created_at: "2026-08-23T10:00:00Z",
   updated_at: "2026-08-23T10:00:00Z",
 };
@@ -56,10 +82,12 @@ function routes({
   list = () => json([]),
   upload,
   remove,
+  parse,
 }: {
   list?: Handler;
   upload?: Handler;
   remove?: Handler;
+  parse?: Handler;
 } = {}): Handler {
   return (url, init) => {
     if (url.endsWith("/api/auth/refresh")) {
@@ -70,6 +98,11 @@ function routes({
         return upload ? upload(url, init) : json(UPLOADED, 201);
       }
       return list(url, init);
+    }
+    if (url.endsWith("/parse")) {
+      return parse
+        ? parse(url, init)
+        : json({ ...UNPARSED, parse_status: "parsed" });
     }
     if (url.includes("/api/resumes/")) {
       return remove ? remove(url, init) : noContent();
@@ -101,7 +134,9 @@ function fileOfSize(name: string, size: number, type: string): File {
 }
 
 function fileInput(): HTMLInputElement {
-  return screen.getByLabelText(/drag and drop your resume/i) as HTMLInputElement;
+  return screen.getByLabelText(
+    /drag and drop your resume/i,
+  ) as HTMLInputElement;
 }
 
 function select(file: File) {
@@ -144,13 +179,15 @@ describe("resume page", () => {
     stubFetch(routes({ list: () => json([EXISTING, OTHER]) }));
     renderManager();
 
-    const first = await screen.findByText("backend-engineer.pdf");
-    expect(first.parentElement).toHaveTextContent("PDF");
-    expect(first.parentElement).toHaveTextContent("240 KB");
-    expect(first.parentElement).toHaveTextContent("Uploaded");
-    expect(screen.getByText("data-analyst.docx").parentElement).toHaveTextContent(
-      "DOCX",
+    const first = (await screen.findByText("backend-engineer.pdf")).closest(
+      "li",
     );
+    expect(first).toHaveTextContent("PDF");
+    expect(first).toHaveTextContent("240 KB");
+    expect(first).toHaveTextContent("Uploaded");
+    expect(
+      screen.getByText("data-analyst.docx").closest("li"),
+    ).toHaveTextContent("DOCX");
   });
 
   it("offers a retry when the resumes cannot be loaded", async () => {
@@ -159,7 +196,9 @@ describe("resume page", () => {
       routes({
         list: () => {
           attempts += 1;
-          return attempts === 1 ? json({ detail: "boom" }, 500) : json([EXISTING]);
+          return attempts === 1
+            ? json({ detail: "boom" }, 500)
+            : json([EXISTING]);
         },
       }),
     );
@@ -227,19 +266,22 @@ describe("resume selection", () => {
       11 * 1024 * 1024,
       "Resumes must be 10 MB or smaller.",
     ],
-  ])("rejects %s without calling the API", async (_case, name, size, message) => {
-    const fetchMock = stubFetch(routes());
-    renderManager();
-    await screen.findByText("No resumes yet");
-    const before = fetchMock.mock.calls.length;
+  ])(
+    "rejects %s without calling the API",
+    async (_case, name, size, message) => {
+      const fetchMock = stubFetch(routes());
+      renderManager();
+      await screen.findByText("No resumes yet");
+      const before = fetchMock.mock.calls.length;
 
-    select(fileOfSize(name, size, PDF_TYPE));
+      select(fileOfSize(name, size, PDF_TYPE));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(message);
-    expect(fileInput()).toHaveAttribute("aria-invalid", "true");
-    expect(uploadButton()).toBeDisabled();
-    expect(fetchMock.mock.calls.length).toBe(before);
-  });
+      expect(await screen.findByRole("alert")).toHaveTextContent(message);
+      expect(fileInput()).toHaveAttribute("aria-invalid", "true");
+      expect(uploadButton()).toBeDisabled();
+      expect(fetchMock.mock.calls.length).toBe(before);
+    },
+  );
 });
 
 describe("resume upload", () => {
@@ -255,7 +297,9 @@ describe("resume upload", () => {
       await screen.findByRole("button", { name: "Delete" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("No resumes yet")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Remove" }),
+    ).not.toBeInTheDocument();
 
     const post = fetchMock.mock.calls.find(
       ([url, init]) =>
@@ -363,7 +407,9 @@ describe("resume deletion", () => {
     const fetchMock = stubFetch(routes({ list: () => json([EXISTING]) }));
 
     const dialog = await openConfirmation();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Keep resume" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Keep resume" }),
+    );
 
     await waitFor(() =>
       expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
@@ -377,7 +423,9 @@ describe("resume deletion", () => {
   });
 
   it("removes the resume once deletion is confirmed", async () => {
-    const fetchMock = stubFetch(routes({ list: () => json([EXISTING, OTHER]) }));
+    const fetchMock = stubFetch(
+      routes({ list: () => json([EXISTING, OTHER]) }),
+    );
 
     const dialog = await openConfirmation();
     fireEvent.click(
@@ -385,7 +433,9 @@ describe("resume deletion", () => {
     );
 
     await waitFor(() =>
-      expect(screen.queryByText("backend-engineer.pdf")).not.toBeInTheDocument(),
+      expect(
+        screen.queryByText("backend-engineer.pdf"),
+      ).not.toBeInTheDocument(),
     );
     expect(screen.getByText("data-analyst.docx")).toBeInTheDocument();
     const deleted = fetchMock.mock.calls.find(
@@ -427,5 +477,164 @@ describe("resume deletion", () => {
     );
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+  });
+});
+
+describe("resume parsing status", () => {
+  it("shows the extracted-text status for a parsed resume", async () => {
+    stubFetch(routes({ list: () => json([EXISTING]) }));
+    renderManager();
+
+    const row = (await screen.findByText("backend-engineer.pdf")).closest("li");
+    expect(row).toHaveTextContent("Text extracted");
+    expect(
+      within(row as HTMLElement).queryByRole("button", { name: "Read resume" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers to read a resume that was never parsed", async () => {
+    stubFetch(routes({ list: () => json([UNPARSED]) }));
+    renderManager();
+
+    const row = (await screen.findByText("older-upload.pdf")).closest("li");
+    expect(row).toHaveTextContent("Not read yet");
+    expect(
+      within(row as HTMLElement).getByRole("button", { name: "Read resume" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows why a resume could not be read and offers a retry", async () => {
+    stubFetch(routes({ list: () => json([UNREADABLE]) }));
+    renderManager();
+
+    const row = (await screen.findByText("scanned.pdf")).closest("li");
+    expect(row).toHaveTextContent("Couldn't read");
+    expect(row).toHaveTextContent("We couldn't find any text in this PDF.");
+    expect(
+      within(row as HTMLElement).getByRole("button", { name: "Try again" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not request parsing until the user asks", async () => {
+    const fetchMock = stubFetch(routes({ list: () => json([UNPARSED]) }));
+    renderManager();
+    await screen.findByText("older-upload.pdf");
+
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url).endsWith("/parse")),
+    ).toBe(false);
+  });
+
+  it("updates the status after a successful read", async () => {
+    const fetchMock = stubFetch(routes({ list: () => json([UNPARSED]) }));
+    renderManager();
+    await screen.findByText("older-upload.pdf");
+
+    fireEvent.click(screen.getByRole("button", { name: "Read resume" }));
+
+    expect(await screen.findByText("Text extracted")).toBeInTheDocument();
+    const parsed = fetchMock.mock.calls.find(([url]) =>
+      String(url).endsWith("/parse"),
+    );
+    expect(String(parsed?.[0])).toContain(`/api/resumes/${UNPARSED.id}/parse`);
+    expect((parsed?.[1] as RequestInit).method).toBe("POST");
+  });
+
+  it("marks the row busy while the resume is being read", async () => {
+    let release = () => {};
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const handler = routes({ list: () => json([UNPARSED]) });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/parse")) {
+          await pending;
+        }
+        return handler(String(input), init);
+      }),
+    );
+    renderManager();
+    await screen.findByText("older-upload.pdf");
+
+    fireEvent.click(screen.getByRole("button", { name: "Read resume" }));
+
+    const row = screen.getByText("older-upload.pdf").closest("li");
+    await waitFor(() => expect(row).toHaveAttribute("aria-busy", "true"));
+    expect(screen.getByRole("button", { name: "Reading…" })).toBeDisabled();
+
+    release();
+    await waitFor(() => expect(row).toHaveAttribute("aria-busy", "false"));
+  });
+
+  it("keeps the resume and reports the reason when reading fails again", async () => {
+    stubFetch(
+      routes({
+        list: () => json([UNPARSED]),
+        parse: () =>
+          json({
+            ...UNPARSED,
+            parse_status: "failed",
+            parse_error:
+              "We couldn't read this PDF. Try uploading another PDF.",
+          }),
+      }),
+    );
+    renderManager();
+    await screen.findByText("older-upload.pdf");
+
+    fireEvent.click(screen.getByRole("button", { name: "Read resume" }));
+
+    expect(await screen.findByText("Couldn't read")).toBeInTheDocument();
+    expect(screen.getByText("older-upload.pdf")).toBeInTheDocument();
+    expect(
+      screen.getByText("We couldn't read this PDF. Try uploading another PDF."),
+    ).toBeInTheDocument();
+  });
+
+  it("reports a failed parse request without changing the resume", async () => {
+    stubFetch(
+      routes({
+        list: () => json([UNPARSED]),
+        parse: () => json({ detail: "boom" }, 500),
+      }),
+    );
+    renderManager();
+    await screen.findByText("older-upload.pdf");
+
+    fireEvent.click(screen.getByRole("button", { name: "Read resume" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "We could not read this resume just now.",
+    );
+    expect(screen.getByText("older-upload.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Not read yet")).toBeInTheDocument();
+  });
+
+  it("redirects to the login page when the session expired during a read", async () => {
+    stubFetch(
+      routes({
+        list: () => json([UNPARSED]),
+        parse: () => json({ detail: "expired" }, 401),
+      }),
+    );
+    renderManager();
+    await screen.findByText("older-upload.pdf");
+
+    fireEvent.click(screen.getByRole("button", { name: "Read resume" }));
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+  });
+
+  it("shows the status of a freshly uploaded resume", async () => {
+    stubFetch(routes());
+    renderManager();
+    await screen.findByText("No resumes yet");
+    select(fileOfSize("resume.pdf", 1024, PDF_TYPE));
+
+    fireEvent.click(uploadButton());
+
+    expect(await screen.findByText("Text extracted")).toBeInTheDocument();
   });
 });

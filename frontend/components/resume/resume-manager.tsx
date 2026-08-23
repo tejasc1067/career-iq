@@ -14,6 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -23,13 +24,25 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  PARSE_STATUS_LABELS,
   deleteResume,
   fileTypeLabel,
   formatBytes,
   listResumes,
+  parseResume,
+  type ParseStatus,
   type Resume,
 } from "@/lib/api/resumes";
 import { useAuth } from "@/lib/auth/context";
+
+const STATUS_VARIANTS: Record<
+  ParseStatus,
+  "default" | "outline" | "destructive"
+> = {
+  pending: "outline",
+  parsed: "default",
+  failed: "destructive",
+};
 
 export function ResumeManager() {
   const { status: authStatus } = useAuth();
@@ -40,6 +53,8 @@ export function ResumeManager() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [parsingId, setParsingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Resume | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -88,6 +103,31 @@ export function ResumeManager() {
   function added(resume: Resume) {
     setResumes((current) => [resume, ...current]);
     setAnnouncement(`${resume.original_filename} uploaded.`);
+  }
+
+  async function runParse(resume: Resume) {
+    setParseError(null);
+    setParsingId(resume.id);
+    const result = await parseResume(resume.id);
+    setParsingId(null);
+
+    if (!result.ok) {
+      if (result.unauthorized) {
+        setSessionEnded(true);
+        return;
+      }
+      setParseError(result.error);
+      return;
+    }
+
+    setResumes((current) =>
+      current.map((item) => (item.id === result.data.id ? result.data : item)),
+    );
+    setAnnouncement(
+      result.data.parse_status === "parsed"
+        ? `${result.data.original_filename} read successfully.`
+        : `${result.data.original_filename} could not be read.`,
+    );
   }
 
   async function confirmDelete() {
@@ -169,35 +209,63 @@ export function ResumeManager() {
               {resumes.map((resume) => (
                 <li
                   key={resume.id}
-                  aria-busy={deletingId === resume.id}
-                  className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                  aria-busy={
+                    deletingId === resume.id || parsingId === resume.id
+                  }
+                  className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                      {resume.original_filename}
-                    </p>
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium">
+                        {resume.original_filename}
+                      </p>
+                      <Badge variant={STATUS_VARIANTS[resume.parse_status]}>
+                        {PARSE_STATUS_LABELS[resume.parse_status]}
+                      </Badge>
+                    </div>
                     <p className="text-muted-foreground text-xs">
                       {fileTypeLabel(resume.content_type)} ·{" "}
                       {formatBytes(resume.byte_size)} · Uploaded{" "}
                       {new Date(resume.created_at).toLocaleDateString()}
                     </p>
+                    {resume.parse_status === "failed" && resume.parse_error && (
+                      <p className="text-destructive text-xs">
+                        {resume.parse_error}
+                      </p>
+                    )}
                   </div>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    disabled={deletingId === resume.id}
-                    onClick={() => setPendingDelete(resume)}
-                  >
-                    {deletingId === resume.id ? "Deleting…" : "Delete"}
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {resume.parse_status !== "parsed" && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={parsingId === resume.id}
+                        onClick={() => runParse(resume)}
+                      >
+                        {parsingId === resume.id
+                          ? "Reading…"
+                          : resume.parse_status === "failed"
+                            ? "Try again"
+                            : "Read resume"}
+                      </Button>
+                    )}
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={deletingId === resume.id}
+                      onClick={() => setPendingDelete(resume)}
+                    >
+                      {deletingId === resume.id ? "Deleting…" : "Delete"}
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
 
-          {deleteError && (
+          {(deleteError ?? parseError) && (
             <p role="alert" className="text-destructive text-sm">
-              {deleteError}
+              {deleteError ?? parseError}
             </p>
           )}
         </CardContent>

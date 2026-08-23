@@ -1,10 +1,14 @@
 import { request, type ApiResult } from "@/lib/api/request";
 
+export type ParseStatus = "pending" | "parsed" | "failed";
+
 export type Resume = {
   id: string;
   original_filename: string;
   content_type: string;
   byte_size: number;
+  parse_status: ParseStatus;
+  parse_error: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -21,6 +25,8 @@ const UPLOAD_FAILED_MESSAGE =
   "We could not upload your resume. Your file is still selected — try again.";
 const DELETE_FAILED_MESSAGE =
   "We could not delete this resume. It is still here — try again.";
+const PARSE_FAILED_MESSAGE =
+  "We could not read this resume just now. Your resume is safe — try again.";
 
 export function listResumes(): Promise<ApiResult<Resume[]>> {
   return request<Resume[]>(
@@ -40,6 +46,14 @@ export function uploadResume(file: File): Promise<ApiResult<Resume>> {
   );
 }
 
+export function parseResume(id: string): Promise<ApiResult<Resume>> {
+  return request<Resume>(
+    `/api/resumes/${id}/parse`,
+    { method: "POST" },
+    PARSE_FAILED_MESSAGE,
+  );
+}
+
 export function deleteResume(id: string): Promise<ApiResult<void>> {
   return request<void>(
     `/api/resumes/${id}`,
@@ -51,6 +65,12 @@ export function deleteResume(id: string): Promise<ApiResult<void>> {
 export function fileTypeLabel(contentType: string): string {
   return contentType === PDF_CONTENT_TYPE ? "PDF" : "DOCX";
 }
+
+export const PARSE_STATUS_LABELS: Record<ParseStatus, string> = {
+  pending: "Not read yet",
+  parsed: "Text extracted",
+  failed: "Couldn't read",
+};
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) {

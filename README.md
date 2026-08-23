@@ -3,8 +3,9 @@
 AI-powered career intelligence platform. Local-first, privacy-first, free to run.
 
 Current state: project foundation, **authentication** (signup, login, token
-refresh, logout), the **user profile**, and **resume upload** (upload, list,
-read, delete). No parsing, career profile, or job features yet.
+refresh, logout), the **user profile**, **resume upload** (upload, list, read,
+delete), and **resume text extraction** (PDF and DOCX). No career profile, AI
+analysis, or job features yet.
 
 ## Specifications
 
@@ -70,7 +71,7 @@ openssl rand -hex 32
 Then apply the migrations and start the server:
 
 ```bash
-alembic upgrade head        # pgvector, users, refresh_tokens, user_profiles, resumes
+alembic upgrade head        # pgvector, users, refresh_tokens, user_profiles, resumes (+ parsing fields)
 uvicorn app.main:app --reload
 ```
 
@@ -98,10 +99,17 @@ PUT    /api/users/me/profile    Replace the profile
 POST   /api/resumes             Upload a PDF or DOCX resume (multipart, field `file`)
 GET    /api/resumes             List the caller's resumes, newest first
 GET    /api/resumes/{id}        Read one resume's metadata
+POST   /api/resumes/{id}/parse  Extract the resume text again
 DELETE /api/resumes/{id}        Permanently delete a resume and its file
 ```
 
-The API returns resume metadata only; it never serves the stored file.
+The API returns resume metadata only; it never serves the stored file and never
+returns the extracted text.
+
+Text extraction runs during upload, synchronously (ARCHITECTURE.md section 60).
+Each resume carries a `parse_status` of `parsed`, `failed`, or `pending`, and a
+`parse_error` holding a message safe to show the user. A file that cannot be
+read is kept so the extraction can be retried through the `parse` endpoint.
 
 ### 3. Frontend
 
