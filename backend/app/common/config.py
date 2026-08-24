@@ -12,6 +12,7 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 JWT_SECRET_MIN_LENGTH = 32
+SUPPORTED_AI_PROVIDERS = ("ollama", "bedrock")
 DEFAULT_RESUME_STORAGE_DIR = Path("var/resumes")
 DEFAULT_MAX_RESUME_UPLOAD_BYTES = 10 * 1024 * 1024
 
@@ -40,10 +41,28 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=15, gt=0)
     refresh_token_expire_days: int = Field(default=30, gt=0)
 
+    ai_provider: str = "ollama"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5:7b"
+    ai_timeout_seconds: int = Field(default=120, gt=0)
+
     resume_storage_dir: Path = DEFAULT_RESUME_STORAGE_DIR
     max_resume_upload_bytes: int = Field(default=DEFAULT_MAX_RESUME_UPLOAD_BYTES, gt=0)
 
     log_level: str = "INFO"
+
+    @field_validator("ai_provider", mode="before")
+    @classmethod
+    def _known_provider(cls, value: object) -> object:
+        """Refuse a provider name the application cannot build."""
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized not in SUPPORTED_AI_PROVIDERS:
+                raise ValueError(
+                    f"AI_PROVIDER must be one of {', '.join(SUPPORTED_AI_PROVIDERS)}"
+                )
+            return normalized
+        return value
 
     @field_validator("jwt_secret")
     @classmethod
