@@ -27,6 +27,7 @@ const EXISTING = {
   byte_size: 245_760,
   parse_status: "parsed",
   parse_error: null,
+  is_understood: false,
   created_at: "2026-08-20T10:00:00Z",
   updated_at: "2026-08-20T10:00:00Z",
 };
@@ -51,6 +52,7 @@ const OTHER = {
   byte_size: 51_200,
   parse_status: "parsed",
   parse_error: null,
+  is_understood: false,
   created_at: "2026-08-19T10:00:00Z",
   updated_at: "2026-08-19T10:00:00Z",
 };
@@ -61,6 +63,7 @@ const UPLOADED = {
   byte_size: 1024,
   parse_status: "parsed",
   parse_error: null,
+  is_understood: false,
   created_at: "2026-08-23T10:00:00Z",
   updated_at: "2026-08-23T10:00:00Z",
 };

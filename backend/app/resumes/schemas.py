@@ -23,17 +23,6 @@ class ResumeRead(BaseModel):
     byte_size: int
     parse_status: str
     parse_error: str | None
+    is_understood: bool
     created_at: datetime
     updated_at: datetime
-
-
-class ResumeSectionRead(BaseModel):
-    """A section detected in a resume, as returned by the API."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    kind: str
-    heading: str | None
-    content: str
-    position: int

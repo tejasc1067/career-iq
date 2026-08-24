@@ -1,1 +1,1 @@
-"""ai domain. Not implemented yet."""
+"""ai domain: the provider boundary for model calls."""

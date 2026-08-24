@@ -4,8 +4,9 @@ AI-powered career intelligence platform. Local-first, privacy-first, free to run
 
 Current state: project foundation, **authentication** (signup, login, token
 refresh, logout), the **user profile**, **resume upload** (upload, list, read,
-delete), **resume text extraction** (PDF and DOCX), and **section detection**.
-No career profile, AI analysis, or job features yet.
+delete), **resume text extraction** (PDF and DOCX), and **AI resume
+understanding** — the model reads the extracted text and returns a structured
+resume. No career profile, analysis, or job features yet.
 
 ## Specifications
 
@@ -61,6 +62,18 @@ Uploaded resumes are written to `RESUME_STORAGE_DIR` (default `backend/var/`
 `resumes`), which is git-ignored and never served over HTTP.
 `MAX_RESUME_UPLOAD_BYTES` caps an upload at 10 MB by default.
 
+AI runs through one provider boundary (ARCHITECTURE.md sections 18 and 19).
+`AI_PROVIDER` selects it: `ollama` is implemented and is the default, `bedrock`
+is the next provider and is refused with a clear message until it exists.
+`OLLAMA_BASE_URL`, `OLLAMA_MODEL` and `AI_TIMEOUT_SECONDS` configure the local
+runtime. No AI credential is required, and the test suite never calls a model.
+
+Understanding a resume sends only that resume's own extracted text to the model,
+asks for JSON matching a schema, and validates the answer with Pydantic before
+storing it on the resume row. Invalid output is rejected rather than stored, and
+prompts and model responses are never logged. Running it again replaces the
+stored result. The endpoints need Ollama running; everything else does not.
+
 `JWT_SECRET` is **required and has no default**. The application refuses to start
 without it, and rejects any value shorter than 32 characters. Generate one:
 
@@ -71,7 +84,7 @@ openssl rand -hex 32
 Then apply the migrations and start the server:
 
 ```bash
-alembic upgrade head        # pgvector, users, refresh_tokens, user_profiles, resumes, resume_sections
+alembic upgrade head        # pgvector, users, refresh_tokens, user_profiles, resumes (+ parsing fields)
 uvicorn app.main:app --reload
 ```
 
@@ -99,8 +112,9 @@ PUT    /api/users/me/profile    Replace the profile
 POST   /api/resumes             Upload a PDF or DOCX resume (multipart, field `file`)
 GET    /api/resumes             List the caller's resumes, newest first
 GET    /api/resumes/{id}        Read one resume's metadata
-POST   /api/resumes/{id}/parse  Extract the resume text and detect sections again
-GET    /api/resumes/{id}/sections  List the sections detected in a resume
+POST   /api/resumes/{id}/parse  Extract the resume text again
+POST   /api/resumes/{id}/understand      Have the model read the resume
+GET    /api/resumes/{id}/understanding   Read the stored structured resume
 DELETE /api/resumes/{id}        Permanently delete a resume and its file
 ```
 
@@ -111,12 +125,6 @@ Text extraction runs during upload, synchronously (ARCHITECTURE.md section 60).
 Each resume carries a `parse_status` of `parsed`, `failed`, or `pending`, and a
 `parse_error` holding a message safe to show the user. A file that cannot be
 read is kept so the extraction can be retried through the `parse` endpoint.
-
-Section detection runs with extraction and is deterministic: headings are
-matched against the section kinds in ARCHITECTURE.md section 16 (`summary`,
-`experience`, `education`, `skills`, `projects`, `certifications`, `contact`,
-plus `other`). Reading a company, role or date out of a section is resume
-interpretation, which section 20 assigns to the AI stage that follows.
 
 ### 3. Frontend
 
@@ -130,7 +138,7 @@ npm run dev
 Open <http://localhost:3000>. The home page reports whether the API is reachable
 and whether you have an active session. Sign in at
 <http://localhost:3000/login>, then manage resumes at
-<http://localhost:3000/resumes> and open one to see its detected sections.
+<http://localhost:3000/resumes>.
 
 ### Try the login flow
 

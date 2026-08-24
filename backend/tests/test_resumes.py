@@ -271,6 +271,7 @@ async def test_the_response_never_exposes_the_storage_path(
         "byte_size",
         "parse_status",
         "parse_error",
+        "is_understood",
         "created_at",
         "updated_at",
     }
@@ -524,6 +525,7 @@ async def test_the_list_returns_metadata_only(
         "byte_size",
         "parse_status",
         "parse_error",
+        "is_understood",
         "created_at",
         "updated_at",
     }

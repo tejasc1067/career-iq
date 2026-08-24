@@ -5,9 +5,10 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.ai.provider import AIError, AIProviderDep
 from app.auth.dependencies import CurrentUserDep
 from app.common.config import get_settings
 from app.database.session import SessionDep
@@ -16,11 +17,9 @@ from app.resumes.models import (
     PARSE_STATUS_FAILED,
     PARSE_STATUS_PARSED,
     Resume,
-    ResumeSection,
 )
 from app.resumes.parsing import ResumeParseError, extract_text, unreadable_message
-from app.resumes.schemas import ResumeRead, ResumeSectionRead
-from app.resumes.sections import detect_sections
+from app.resumes.schemas import ResumeRead
 from app.resumes.storage import (
     ALLOWED_CONTENT_TYPES,
     StoragePathError,
@@ -33,6 +32,11 @@ from app.resumes.storage import (
     relative_path,
     remove_stored_file,
     write_upload,
+)
+from app.resumes.understanding import (
+    ResumeUnderstandingError,
+    StructuredResume,
+    understand_resume,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +54,11 @@ SAVE_FAILED_DETAIL = "We could not save your resume. Please try again."
 DELETE_FAILED_DETAIL = "We could not delete your resume. Please try again."
 PARSE_FAILED_DETAIL = "We could not read your resume just now. Please try again."
 NOT_FOUND_DETAIL = "Resume not found."
+NO_TEXT_DETAIL = (
+    "We haven't read the text of this resume yet. Read it first, then try again."
+)
+NOT_UNDERSTOOD_DETAIL = "This resume has not been understood yet."
+UNDERSTANDING_FAILED_DETAIL = "We could not understand your resume. Please try again."
 
 BYTES_PER_MEGABYTE = 1024 * 1024
 
@@ -76,22 +85,6 @@ def _parse_outcome(
     return PARSE_STATUS_PARSED, text, None
 
 
-def _detected_rows(resume_id: uuid.UUID, text: str | None) -> list[ResumeSection]:
-    """Build the section rows for a resume's extracted text."""
-    if text is None:
-        return []
-    return [
-        ResumeSection(
-            resume_id=resume_id,
-            kind=section.kind,
-            heading=section.heading,
-            content=section.content,
-            position=position,
-        )
-        for position, section in enumerate(detect_sections(text))
-    ]
-
-
 @router.post(
     "",
     response_model=ResumeRead,
@@ -111,9 +104,8 @@ async def upload_resume(
     unless the bytes on disk match that format. The owning user comes from the
     access token, so no form field can direct the upload at another account.
 
-    Text extraction and section detection both run here, synchronously. A file
-    that cannot be read is still stored, with a failed parse status the user
-    can retry.
+    Text extraction runs here, synchronously. A file that cannot be read is
+    still stored, with a failed parse status the user can retry.
     """
     settings = get_settings()
     filename = display_filename(file.filename)
@@ -165,7 +157,6 @@ async def upload_resume(
         parse_error=parse_error,
     )
     session.add(resume)
-    session.add_all(_detected_rows(resume_id, extracted_text))
     try:
         await session.commit()
     except SQLAlchemyError:
@@ -223,19 +214,14 @@ async def parse_resume(
     """Re-run text extraction for a resume the caller owns.
 
     This is the retry PRODUCT.md section 6 asks for. It replaces the parse
-    result and the detected sections on the existing row, so retrying never
-    creates a second resume and never leaves sections from an earlier run
-    behind. The extension comes from the stored path rather than from the
-    client.
+    result on the existing row, so retrying never creates a second resume, and
+    a file that still cannot be read simply stays failed. The extension comes
+    from the stored path rather than from the client.
     """
     resume = await _owned_resume(session, resume_id, user.id)
     resume.parse_status, resume.extracted_text, resume.parse_error = _parse_outcome(
         resume.stored_path, extension_of(resume.stored_path)
     )
-    await session.execute(
-        delete(ResumeSection).where(ResumeSection.resume_id == resume.id)
-    )
-    session.add_all(_detected_rows(resume.id, resume.extracted_text))
 
     try:
         await session.commit()
@@ -250,28 +236,68 @@ async def parse_resume(
     return resume
 
 
-@router.get(
-    "/{resume_id}/sections",
-    response_model=list[ResumeSectionRead],
-    summary="List the sections detected in one of the signed-in user's resumes",
-    responses={status.HTTP_404_NOT_FOUND: {"description": "Resume not found"}},
+@router.post(
+    "/{resume_id}/understand",
+    response_model=StructuredResume,
+    summary="Have the model read one of the signed-in user's resumes",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Resume not found"},
+        status.HTTP_409_CONFLICT: {"description": "Resume text is not available"},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Unusable model output"},
+    },
 )
-async def list_resume_sections(
-    resume_id: uuid.UUID, user: CurrentUserDep, session: SessionDep
-) -> list[ResumeSection]:
-    """Return the sections of a resume the caller owns, in document order.
+async def understand_owned_resume(
+    resume_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+    provider: AIProviderDep,
+) -> StructuredResume:
+    """Send a resume's own text to the model and store what it understood.
 
-    Ownership is settled against the resume first, so a resume identifier
-    belonging to another user is not found rather than forbidden, exactly as
-    the other resume reads behave.
+    Only the caller's resume is ever read, and only its extracted text is sent.
+    Re-running replaces the previous understanding on the same row, so there is
+    no second resume and no history to reconcile.
     """
     resume = await _owned_resume(session, resume_id, user.id)
-    sections = await session.scalars(
-        select(ResumeSection)
-        .where(ResumeSection.resume_id == resume.id)
-        .order_by(ResumeSection.position)
-    )
-    return list(sections)
+    if resume.parse_status != PARSE_STATUS_PARSED or not resume.extracted_text:
+        raise HTTPException(status.HTTP_409_CONFLICT, NO_TEXT_DETAIL)
+
+    try:
+        structured = await understand_resume(provider, resume.extracted_text)
+    except ResumeUnderstandingError as error:
+        logger.warning("model output did not describe a resume")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from None
+    except AIError as error:
+        logger.warning("resume understanding could not be completed")
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(error)) from None
+
+    resume.structured_resume = structured.model_dump()
+    try:
+        await session.commit()
+    except SQLAlchemyError:
+        await session.rollback()
+        logger.exception("structured resume could not be persisted")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, UNDERSTANDING_FAILED_DETAIL
+        ) from None
+
+    return structured
+
+
+@router.get(
+    "/{resume_id}/understanding",
+    response_model=StructuredResume,
+    summary="Read what the model understood from one of the user's resumes",
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Nothing understood yet"}},
+)
+async def read_resume_understanding(
+    resume_id: uuid.UUID, user: CurrentUserDep, session: SessionDep
+) -> StructuredResume:
+    """Return the stored understanding of a resume the caller owns."""
+    resume = await _owned_resume(session, resume_id, user.id)
+    if resume.structured_resume is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_UNDERSTOOD_DETAIL)
+    return StructuredResume.model_validate(resume.structured_resume)
 
 
 @router.delete(

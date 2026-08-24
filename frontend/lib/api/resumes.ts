@@ -9,16 +9,60 @@ export type Resume = {
   byte_size: number;
   parse_status: ParseStatus;
   parse_error: string | null;
+  is_understood: boolean;
   created_at: string;
   updated_at: string;
 };
 
-export type ResumeSection = {
-  id: string;
-  kind: string;
-  heading: string | null;
-  content: string;
-  position: number;
+export type ResumeContact = {
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  linkedin_url: string | null;
+  github_url: string | null;
+};
+
+export type ResumeExperience = {
+  company: string | null;
+  role: string | null;
+  location: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  is_current: boolean;
+  highlights: string[];
+};
+
+export type ResumeSkill = { name: string | null; category: string | null };
+
+export type ResumeEducation = {
+  institution: string | null;
+  degree: string | null;
+  field_of_study: string | null;
+  start_date: string | null;
+  end_date: string | null;
+};
+
+export type ResumeProject = {
+  name: string | null;
+  description: string | null;
+  technologies: string[];
+};
+
+export type ResumeCertification = {
+  name: string | null;
+  issuing_organization: string | null;
+  date: string | null;
+};
+
+export type StructuredResume = {
+  contact: ResumeContact;
+  professional_summary: string | null;
+  experience: ResumeExperience[];
+  skills: ResumeSkill[];
+  education: ResumeEducation[];
+  projects: ResumeProject[];
+  certifications: ResumeCertification[];
 };
 
 export const PDF_CONTENT_TYPE = "application/pdf";
@@ -33,12 +77,12 @@ const UPLOAD_FAILED_MESSAGE =
   "We could not upload your resume. Your file is still selected — try again.";
 const DELETE_FAILED_MESSAGE =
   "We could not delete this resume. It is still here — try again.";
+const UNDERSTAND_FAILED_MESSAGE =
+  "We could not understand this resume just now. Your resume is safe — try again.";
+const UNDERSTANDING_LOAD_FAILED_MESSAGE =
+  "We could not load what CareerIQ understood from this resume. Try again.";
 const PARSE_FAILED_MESSAGE =
   "We could not read this resume just now. Your resume is safe — try again.";
-const RESUME_LOAD_FAILED_MESSAGE =
-  "We could not load this resume. The CareerIQ API may not be running.";
-const SECTIONS_LOAD_FAILED_MESSAGE =
-  "We could not load the sections of this resume. Try again in a moment.";
 
 export function listResumes(): Promise<ApiResult<Resume[]>> {
   return request<Resume[]>(
@@ -58,29 +102,31 @@ export function uploadResume(file: File): Promise<ApiResult<Resume>> {
   );
 }
 
-export function fetchResume(id: string): Promise<ApiResult<Resume>> {
-  return request<Resume>(
-    `/api/resumes/${id}`,
-    { cache: "no-store" },
-    RESUME_LOAD_FAILED_MESSAGE,
-  );
-}
-
-export function listResumeSections(
-  id: string,
-): Promise<ApiResult<ResumeSection[]>> {
-  return request<ResumeSection[]>(
-    `/api/resumes/${id}/sections`,
-    { cache: "no-store" },
-    SECTIONS_LOAD_FAILED_MESSAGE,
-  );
-}
-
 export function parseResume(id: string): Promise<ApiResult<Resume>> {
   return request<Resume>(
     `/api/resumes/${id}/parse`,
     { method: "POST" },
     PARSE_FAILED_MESSAGE,
+  );
+}
+
+export function understandResume(
+  id: string,
+): Promise<ApiResult<StructuredResume>> {
+  return request<StructuredResume>(
+    `/api/resumes/${id}/understand`,
+    { method: "POST" },
+    UNDERSTAND_FAILED_MESSAGE,
+  );
+}
+
+export function fetchResumeUnderstanding(
+  id: string,
+): Promise<ApiResult<StructuredResume>> {
+  return request<StructuredResume>(
+    `/api/resumes/${id}/understanding`,
+    { cache: "no-store" },
+    UNDERSTANDING_LOAD_FAILED_MESSAGE,
   );
 }
 
@@ -101,21 +147,6 @@ export const PARSE_STATUS_LABELS: Record<ParseStatus, string> = {
   parsed: "Text extracted",
   failed: "Couldn't read",
 };
-
-export const SECTION_KIND_LABELS: Record<string, string> = {
-  contact: "Contact",
-  summary: "Summary",
-  experience: "Experience",
-  education: "Education",
-  skills: "Skills",
-  projects: "Projects",
-  certifications: "Certifications",
-  other: "Other",
-};
-
-export function sectionKindLabel(kind: string): string {
-  return SECTION_KIND_LABELS[kind] ?? "Other";
-}
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) {
