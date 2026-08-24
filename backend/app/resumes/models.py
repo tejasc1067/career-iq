@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, Uuid, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -27,8 +28,10 @@ class Resume(Base):
     server-generated identifiers, so `original_filename` is never part of a
     filesystem path.
 
-    `extracted_text` holds the text pulled out of the file. It is sensitive
-    career information, so it is never returned by the API and never logged.
+    `extracted_text` holds the text pulled out of the file and
+    `structured_resume` what the model understood from it. Both are sensitive
+    career information: the text is never returned by the API, and neither is
+    ever logged.
     """
 
     __tablename__ = "resumes"
@@ -50,9 +53,15 @@ class Resume(Base):
     parse_error: Mapped[str | None] = mapped_column(
         String(PARSE_ERROR_MAX_LENGTH), nullable=True
     )
+    structured_resume: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    @property
+    def is_understood(self) -> bool:
+        """Whether the model has read this resume."""
+        return self.structured_resume is not None

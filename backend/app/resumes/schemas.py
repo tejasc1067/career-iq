@@ -23,5 +23,6 @@ class ResumeRead(BaseModel):
     byte_size: int
     parse_status: str
     parse_error: str | None
+    is_understood: bool
     created_at: datetime
     updated_at: datetime

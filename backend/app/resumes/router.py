@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.ai.provider import AIError, AIProviderDep
 from app.auth.dependencies import CurrentUserDep
 from app.common.config import get_settings
 from app.database.session import SessionDep
@@ -32,6 +33,11 @@ from app.resumes.storage import (
     remove_stored_file,
     write_upload,
 )
+from app.resumes.understanding import (
+    ResumeUnderstandingError,
+    StructuredResume,
+    understand_resume,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +54,11 @@ SAVE_FAILED_DETAIL = "We could not save your resume. Please try again."
 DELETE_FAILED_DETAIL = "We could not delete your resume. Please try again."
 PARSE_FAILED_DETAIL = "We could not read your resume just now. Please try again."
 NOT_FOUND_DETAIL = "Resume not found."
+NO_TEXT_DETAIL = (
+    "We haven't read the text of this resume yet. Read it first, then try again."
+)
+NOT_UNDERSTOOD_DETAIL = "This resume has not been understood yet."
+UNDERSTANDING_FAILED_DETAIL = "We could not understand your resume. Please try again."
 
 BYTES_PER_MEGABYTE = 1024 * 1024
 
@@ -223,6 +234,70 @@ async def parse_resume(
         ) from None
 
     return resume
+
+
+@router.post(
+    "/{resume_id}/understand",
+    response_model=StructuredResume,
+    summary="Have the model read one of the signed-in user's resumes",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Resume not found"},
+        status.HTTP_409_CONFLICT: {"description": "Resume text is not available"},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Unusable model output"},
+    },
+)
+async def understand_owned_resume(
+    resume_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+    provider: AIProviderDep,
+) -> StructuredResume:
+    """Send a resume's own text to the model and store what it understood.
+
+    Only the caller's resume is ever read, and only its extracted text is sent.
+    Re-running replaces the previous understanding on the same row, so there is
+    no second resume and no history to reconcile.
+    """
+    resume = await _owned_resume(session, resume_id, user.id)
+    if resume.parse_status != PARSE_STATUS_PARSED or not resume.extracted_text:
+        raise HTTPException(status.HTTP_409_CONFLICT, NO_TEXT_DETAIL)
+
+    try:
+        structured = await understand_resume(provider, resume.extracted_text)
+    except ResumeUnderstandingError as error:
+        logger.warning("model output did not describe a resume")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from None
+    except AIError as error:
+        logger.warning("resume understanding could not be completed")
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(error)) from None
+
+    resume.structured_resume = structured.model_dump()
+    try:
+        await session.commit()
+    except SQLAlchemyError:
+        await session.rollback()
+        logger.exception("structured resume could not be persisted")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, UNDERSTANDING_FAILED_DETAIL
+        ) from None
+
+    return structured
+
+
+@router.get(
+    "/{resume_id}/understanding",
+    response_model=StructuredResume,
+    summary="Read what the model understood from one of the user's resumes",
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Nothing understood yet"}},
+)
+async def read_resume_understanding(
+    resume_id: uuid.UUID, user: CurrentUserDep, session: SessionDep
+) -> StructuredResume:
+    """Return the stored understanding of a resume the caller owns."""
+    resume = await _owned_resume(session, resume_id, user.id)
+    if resume.structured_resume is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_UNDERSTOOD_DETAIL)
+    return StructuredResume.model_validate(resume.structured_resume)
 
 
 @router.delete(

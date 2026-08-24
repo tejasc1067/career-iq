@@ -475,6 +475,7 @@ async def test_the_parse_response_exposes_no_text_or_path(
         "byte_size",
         "parse_status",
         "parse_error",
+        "is_understood",
         "created_at",
         "updated_at",
     }
