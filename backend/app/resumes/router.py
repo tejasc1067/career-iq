@@ -5,7 +5,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.auth.dependencies import CurrentUserDep
@@ -16,9 +16,11 @@ from app.resumes.models import (
     PARSE_STATUS_FAILED,
     PARSE_STATUS_PARSED,
     Resume,
+    ResumeSection,
 )
 from app.resumes.parsing import ResumeParseError, extract_text, unreadable_message
-from app.resumes.schemas import ResumeRead
+from app.resumes.schemas import ResumeRead, ResumeSectionRead
+from app.resumes.sections import detect_sections
 from app.resumes.storage import (
     ALLOWED_CONTENT_TYPES,
     StoragePathError,
@@ -74,6 +76,22 @@ def _parse_outcome(
     return PARSE_STATUS_PARSED, text, None
 
 
+def _detected_rows(resume_id: uuid.UUID, text: str | None) -> list[ResumeSection]:
+    """Build the section rows for a resume's extracted text."""
+    if text is None:
+        return []
+    return [
+        ResumeSection(
+            resume_id=resume_id,
+            kind=section.kind,
+            heading=section.heading,
+            content=section.content,
+            position=position,
+        )
+        for position, section in enumerate(detect_sections(text))
+    ]
+
+
 @router.post(
     "",
     response_model=ResumeRead,
@@ -93,8 +111,9 @@ async def upload_resume(
     unless the bytes on disk match that format. The owning user comes from the
     access token, so no form field can direct the upload at another account.
 
-    Text extraction runs here, synchronously. A file that cannot be read is
-    still stored, with a failed parse status the user can retry.
+    Text extraction and section detection both run here, synchronously. A file
+    that cannot be read is still stored, with a failed parse status the user
+    can retry.
     """
     settings = get_settings()
     filename = display_filename(file.filename)
@@ -146,6 +165,7 @@ async def upload_resume(
         parse_error=parse_error,
     )
     session.add(resume)
+    session.add_all(_detected_rows(resume_id, extracted_text))
     try:
         await session.commit()
     except SQLAlchemyError:
@@ -203,14 +223,19 @@ async def parse_resume(
     """Re-run text extraction for a resume the caller owns.
 
     This is the retry PRODUCT.md section 6 asks for. It replaces the parse
-    result on the existing row, so retrying never creates a second resume, and
-    a file that still cannot be read simply stays failed. The extension comes
-    from the stored path rather than from the client.
+    result and the detected sections on the existing row, so retrying never
+    creates a second resume and never leaves sections from an earlier run
+    behind. The extension comes from the stored path rather than from the
+    client.
     """
     resume = await _owned_resume(session, resume_id, user.id)
     resume.parse_status, resume.extracted_text, resume.parse_error = _parse_outcome(
         resume.stored_path, extension_of(resume.stored_path)
     )
+    await session.execute(
+        delete(ResumeSection).where(ResumeSection.resume_id == resume.id)
+    )
+    session.add_all(_detected_rows(resume.id, resume.extracted_text))
 
     try:
         await session.commit()
@@ -223,6 +248,30 @@ async def parse_resume(
         ) from None
 
     return resume
+
+
+@router.get(
+    "/{resume_id}/sections",
+    response_model=list[ResumeSectionRead],
+    summary="List the sections detected in one of the signed-in user's resumes",
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Resume not found"}},
+)
+async def list_resume_sections(
+    resume_id: uuid.UUID, user: CurrentUserDep, session: SessionDep
+) -> list[ResumeSection]:
+    """Return the sections of a resume the caller owns, in document order.
+
+    Ownership is settled against the resume first, so a resume identifier
+    belonging to another user is not found rather than forbidden, exactly as
+    the other resume reads behave.
+    """
+    resume = await _owned_resume(session, resume_id, user.id)
+    sections = await session.scalars(
+        select(ResumeSection)
+        .where(ResumeSection.resume_id == resume.id)
+        .order_by(ResumeSection.position)
+    )
+    return list(sections)
 
 
 @router.delete(
