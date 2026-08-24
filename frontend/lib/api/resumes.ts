@@ -13,6 +13,14 @@ export type Resume = {
   updated_at: string;
 };
 
+export type ResumeSection = {
+  id: string;
+  kind: string;
+  heading: string | null;
+  content: string;
+  position: number;
+};
+
 export const PDF_CONTENT_TYPE = "application/pdf";
 export const DOCX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -27,6 +35,10 @@ const DELETE_FAILED_MESSAGE =
   "We could not delete this resume. It is still here — try again.";
 const PARSE_FAILED_MESSAGE =
   "We could not read this resume just now. Your resume is safe — try again.";
+const RESUME_LOAD_FAILED_MESSAGE =
+  "We could not load this resume. The CareerIQ API may not be running.";
+const SECTIONS_LOAD_FAILED_MESSAGE =
+  "We could not load the sections of this resume. Try again in a moment.";
 
 export function listResumes(): Promise<ApiResult<Resume[]>> {
   return request<Resume[]>(
@@ -43,6 +55,24 @@ export function uploadResume(file: File): Promise<ApiResult<Resume>> {
     "/api/resumes",
     { method: "POST", body },
     UPLOAD_FAILED_MESSAGE,
+  );
+}
+
+export function fetchResume(id: string): Promise<ApiResult<Resume>> {
+  return request<Resume>(
+    `/api/resumes/${id}`,
+    { cache: "no-store" },
+    RESUME_LOAD_FAILED_MESSAGE,
+  );
+}
+
+export function listResumeSections(
+  id: string,
+): Promise<ApiResult<ResumeSection[]>> {
+  return request<ResumeSection[]>(
+    `/api/resumes/${id}/sections`,
+    { cache: "no-store" },
+    SECTIONS_LOAD_FAILED_MESSAGE,
   );
 }
 
@@ -71,6 +101,21 @@ export const PARSE_STATUS_LABELS: Record<ParseStatus, string> = {
   parsed: "Text extracted",
   failed: "Couldn't read",
 };
+
+export const SECTION_KIND_LABELS: Record<string, string> = {
+  contact: "Contact",
+  summary: "Summary",
+  experience: "Experience",
+  education: "Education",
+  skills: "Skills",
+  projects: "Projects",
+  certifications: "Certifications",
+  other: "Other",
+};
+
+export function sectionKindLabel(kind: string): string {
+  return SECTION_KIND_LABELS[kind] ?? "Other";
+}
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) {

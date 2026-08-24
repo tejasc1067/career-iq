@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -235,6 +236,9 @@ export function ResumeManager() {
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/resumes/${resume.id}`}>View sections</Link>
+                    </Button>
                     {resume.parse_status !== "parsed" && (
                       <Button
                         variant="secondary"
