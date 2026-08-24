@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { ResumeUnderstanding } from "@/components/resume/resume-understanding";
 import { ResumeUpload } from "@/components/resume/resume-upload";
 import {
   AlertDialog,
@@ -26,12 +27,15 @@ import {
 import {
   PARSE_STATUS_LABELS,
   deleteResume,
+  fetchResumeUnderstanding,
   fileTypeLabel,
   formatBytes,
   listResumes,
   parseResume,
+  understandResume,
   type ParseStatus,
   type Resume,
+  type StructuredResume,
 } from "@/lib/api/resumes";
 import { useAuth } from "@/lib/auth/context";
 
@@ -55,6 +59,12 @@ export function ResumeManager() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [parsingId, setParsingId] = useState<string | null>(null);
+  const [understandingId, setUnderstandingId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [understandings, setUnderstandings] = useState<
+    Record<string, StructuredResume>
+  >({});
+  const [understandError, setUnderstandError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Resume | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -128,6 +138,58 @@ export function ResumeManager() {
         ? `${result.data.original_filename} read successfully.`
         : `${result.data.original_filename} could not be read.`,
     );
+  }
+
+  async function understand(resume: Resume) {
+    setUnderstandError(null);
+    setUnderstandingId(resume.id);
+    const result = await understandResume(resume.id);
+    setUnderstandingId(null);
+
+    if (!result.ok) {
+      if (result.unauthorized) {
+        setSessionEnded(true);
+        return;
+      }
+      setUnderstandError(result.error);
+      return;
+    }
+
+    setUnderstandings((current) => ({ ...current, [resume.id]: result.data }));
+    setResumes((current) =>
+      current.map((item) =>
+        item.id === resume.id ? { ...item, is_understood: true } : item,
+      ),
+    );
+    setOpenId(resume.id);
+    setAnnouncement(`${resume.original_filename} understood.`);
+  }
+
+  async function toggleUnderstanding(resume: Resume) {
+    if (openId === resume.id) {
+      setOpenId(null);
+      return;
+    }
+
+    setUnderstandError(null);
+    setOpenId(resume.id);
+    if (understandings[resume.id]) {
+      return;
+    }
+
+    setUnderstandingId(resume.id);
+    const result = await fetchResumeUnderstanding(resume.id);
+    setUnderstandingId(null);
+
+    if (!result.ok) {
+      if (result.unauthorized) {
+        setSessionEnded(true);
+        return;
+      }
+      setUnderstandError(result.error);
+      return;
+    }
+    setUnderstandings((current) => ({ ...current, [resume.id]: result.data }));
   }
 
   async function confirmDelete() {
@@ -210,62 +272,110 @@ export function ResumeManager() {
                 <li
                   key={resume.id}
                   aria-busy={
-                    deletingId === resume.id || parsingId === resume.id
+                    deletingId === resume.id ||
+                    parsingId === resume.id ||
+                    understandingId === resume.id
                   }
-                  className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                  className="space-y-3 py-3 first:pt-0 last:pb-0"
                 >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-medium">
-                        {resume.original_filename}
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-medium">
+                          {resume.original_filename}
+                        </p>
+                        <Badge variant={STATUS_VARIANTS[resume.parse_status]}>
+                          {PARSE_STATUS_LABELS[resume.parse_status]}
+                        </Badge>
+                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        {fileTypeLabel(resume.content_type)} ·{" "}
+                        {formatBytes(resume.byte_size)} · Uploaded{" "}
+                        {new Date(resume.created_at).toLocaleDateString()}
                       </p>
-                      <Badge variant={STATUS_VARIANTS[resume.parse_status]}>
-                        {PARSE_STATUS_LABELS[resume.parse_status]}
-                      </Badge>
+                      {resume.parse_status === "failed" &&
+                        resume.parse_error && (
+                          <p className="text-destructive text-xs">
+                            {resume.parse_error}
+                          </p>
+                        )}
                     </div>
-                    <p className="text-muted-foreground text-xs">
-                      {fileTypeLabel(resume.content_type)} ·{" "}
-                      {formatBytes(resume.byte_size)} · Uploaded{" "}
-                      {new Date(resume.created_at).toLocaleDateString()}
-                    </p>
-                    {resume.parse_status === "failed" && resume.parse_error && (
-                      <p className="text-destructive text-xs">
-                        {resume.parse_error}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {resume.parse_status !== "parsed" && (
+                    <div className="flex shrink-0 items-center gap-2">
+                      {resume.parse_status !== "parsed" ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={parsingId === resume.id}
+                          onClick={() => runParse(resume)}
+                        >
+                          {parsingId === resume.id
+                            ? "Reading…"
+                            : resume.parse_status === "failed"
+                              ? "Try again"
+                              : "Read resume"}
+                        </Button>
+                      ) : resume.is_understood ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            aria-expanded={openId === resume.id}
+                            disabled={understandingId === resume.id}
+                            onClick={() => toggleUnderstanding(resume)}
+                          >
+                            {understandingId === resume.id
+                              ? "Loading…"
+                              : openId === resume.id
+                                ? "Hide details"
+                                : "View details"}
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={understandingId === resume.id}
+                            onClick={() => understand(resume)}
+                          >
+                            {understandingId === resume.id
+                              ? "Understanding…"
+                              : "Understand again"}
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          size="sm"
+                          disabled={understandingId === resume.id}
+                          onClick={() => understand(resume)}
+                        >
+                          {understandingId === resume.id
+                            ? "Understanding…"
+                            : "Understand with AI"}
+                        </Button>
+                      )}
                       <Button
-                        variant="secondary"
+                        variant="destructive"
                         size="sm"
-                        disabled={parsingId === resume.id}
-                        onClick={() => runParse(resume)}
+                        disabled={deletingId === resume.id}
+                        onClick={() => setPendingDelete(resume)}
                       >
-                        {parsingId === resume.id
-                          ? "Reading…"
-                          : resume.parse_status === "failed"
-                            ? "Try again"
-                            : "Read resume"}
+                        {deletingId === resume.id ? "Deleting…" : "Delete"}
                       </Button>
-                    )}
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={deletingId === resume.id}
-                      onClick={() => setPendingDelete(resume)}
-                    >
-                      {deletingId === resume.id ? "Deleting…" : "Delete"}
-                    </Button>
+                    </div>
                   </div>
+                  {openId === resume.id && understandings[resume.id] && (
+                    <div className="bg-surface-sunken rounded-md border p-4">
+                      <ResumeUnderstanding
+                        understanding={understandings[resume.id]}
+                      />
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
           )}
 
-          {(deleteError ?? parseError) && (
+          {(deleteError ?? parseError ?? understandError) && (
             <p role="alert" className="text-destructive text-sm">
-              {deleteError ?? parseError}
+              {deleteError ?? parseError ?? understandError}
             </p>
           )}
         </CardContent>
